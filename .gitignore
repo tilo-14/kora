@@ -33,3 +33,6 @@ docs/api-reference-generated/
 # AI (ignore all except skills/)
 .claude/*
 !.claude/skills/
+
+# Internal planning docs
+add-light/

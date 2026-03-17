@@ -2,10 +2,15 @@ use crate::error::KoraError;
 
 use super::types::CompressedTokenAccount;
 
+/// Maximum number of compressed accounts per instruction.
+/// Matches kora-light-client's limit to prevent exceeding transaction account limits.
+const MAX_INPUT_ACCOUNTS: usize = 8;
+
 /// Select compressed token accounts to satisfy the requested transfer amount.
 ///
-/// Uses a greedy algorithm: sorts by descending amount and picks accounts
-/// until the cumulative sum meets or exceeds `amount`.
+/// Uses a greedy algorithm: sorts by descending amount and picks up to
+/// `MAX_INPUT_ACCOUNTS` (8) accounts until the cumulative sum meets or
+/// exceeds `amount`.
 pub fn select_input_accounts(
     accounts: &[CompressedTokenAccount],
     amount: u64,
@@ -24,7 +29,7 @@ pub fn select_input_accounts(
     let mut selected = vec![];
     let mut cumulative: u64 = 0;
 
-    for (amt, acct) in &with_amounts {
+    for (amt, acct) in with_amounts.iter().take(MAX_INPUT_ACCOUNTS) {
         selected.push((*acct).clone());
         cumulative = cumulative.saturating_add(*amt);
         if cumulative >= amount {
@@ -100,5 +105,25 @@ mod tests {
         let result = select_input_accounts(&[], 100);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), KoraError::InsufficientFunds(_)));
+    }
+
+    #[test]
+    fn test_select_input_accounts_max_cap() {
+        // 10 accounts of 100 each = 1000 total, but MAX_INPUT_ACCOUNTS = 8
+        let accounts: Vec<_> = (0..10).map(|_| make_test_account(100)).collect();
+        // Requesting 800 should succeed (8 * 100 = 800)
+        let selected = select_input_accounts(&accounts, 800).unwrap();
+        assert_eq!(selected.len(), 8);
+
+        // Requesting 900 should fail (only 8 accounts considered = 800 < 900)
+        let result = select_input_accounts(&accounts, 900);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KoraError::InsufficientFunds(msg) => {
+                assert!(msg.contains("need 900"));
+                assert!(msg.contains("have 800"));
+            }
+            other => panic!("Expected InsufficientFunds, got {other:?}"),
+        }
     }
 }

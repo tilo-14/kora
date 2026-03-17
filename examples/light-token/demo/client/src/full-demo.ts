@@ -1,22 +1,22 @@
 /**
- * Gasless Light Token (compressed token) transfer via Kora with payment.
+ * Gasless Light Token transfer via Kora with payment.
  *
  * This demo mirrors the SPL getting-started/full-demo.ts pattern:
  *   1. Initialize clients
  *   2. Setup keypairs
- *   3. Create light token transfer instructions via Kora
+ *   3. Create Light Token transfer instructions via Kora
  *   4. Estimate fee and get payment instruction
  *   5. Build final V0 transaction with Light Protocol lookup table
  *   6. Sign and submit to Kora for co-signing and broadcast
  *
  * Key difference from SPL transfers:
- *   Light token transfers require the Light Protocol Address Lookup Table
+ *   Light Token transfers require the Light Protocol Address Lookup Table
  *   to fit compressed transfer instructions within Solana's 1232-byte limit.
  *   Kora handles validity proofs and Merkle tree resolution server-side.
  *
  * Prerequisites:
  * - Running Kora server with light_token config (see server/kora.toml)
- * - Sender holds compressed tokens (run devnet-setup.ts first)
+ * - Sender holds Light Token balance (run devnet-setup.ts first)
  * - Environment variables in ../.env
  */
 import { KoraClient } from "@solana/kora";
@@ -40,12 +40,10 @@ const CONFIG = {
     process.env.SOLANA_RPC_URL || process.env.ZK_COMPRESSION_RPC_URL!,
   usdcMint: process.env.LIGHT_TOKEN_MINT!,
 
-  // Light Protocol Address Lookup Table
-  // Mainnet: 9NYFyEqPkyXUhkerbGHXUXkvb4qpzeEdHuGpgbgpH1NJ
-  // Devnet:  qAJZMgnQJ8G6vA3WRcjD9Jan1wtKkaCFWLWskxJrR5V
+  // Light Protocol Address Lookup Table (same for mainnet and devnet)
   lightLookupTable: new PublicKey(
     process.env.LIGHT_LUT_ADDRESS ||
-      "qAJZMgnQJ8G6vA3WRcjD9Jan1wtKkaCFWLWskxJrR5V",
+      "9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza",
   ),
 };
 
@@ -121,21 +119,21 @@ async function setupKeys(kora: KoraClient) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Create light token transfer instructions
+// Step 3: Create Light Token transfer instructions
 // ---------------------------------------------------------------------------
 async function createTransferInstructions(
   kora: KoraClient,
   sender: Keypair,
   destination: Keypair,
 ) {
-  console.log("\n[3/6] Creating light token transfer instructions");
+  console.log("\n[3/6] Creating Light Token transfer instructions");
 
   const amount = 1_000_000; // 1 token (6 decimals)
   console.log("  -> Token mint:", CONFIG.usdcMint);
   console.log("  -> Amount:", amount);
 
   // Kora builds the compressed transfer server-side:
-  //   - Fetches sender's compressed token accounts
+  //   - Fetches sender's Light Token accounts
   //   - Gets validity proofs from ZK compression RPC
   //   - Constructs Light Protocol instructions
   const transferRequest = {
@@ -290,7 +288,7 @@ async function main() {
   console.log("\n========================================================");
   console.log("KORA GASLESS LIGHT TOKEN TRANSFER DEMO (WITH PAYMENT)");
   console.log("========================================================");
-  console.log("\nThis demo builds a compressed token transfer via Kora,");
+  console.log("\nThis demo builds a Light Token transfer via Kora,");
   console.log(
     "adds a payment instruction, and submits for gasless execution.\n",
   );
@@ -302,7 +300,7 @@ async function main() {
     // Step 2: Setup keys
     const { sender, destination, feePayer } = await setupKeys(kora);
 
-    // Step 3: Create light token transfer instructions
+    // Step 3: Create Light Token transfer instructions
     const { instructions, baseTransaction } =
       await createTransferInstructions(kora, sender, destination);
 
@@ -331,7 +329,7 @@ async function main() {
     );
 
     console.log("\n========================================================");
-    console.log("SUCCESS: Light token transfer confirmed on Solana");
+    console.log("SUCCESS: Light Token transfer confirmed on Solana");
     console.log("========================================================");
     console.log("\nTransaction signature:");
     console.log(signature);

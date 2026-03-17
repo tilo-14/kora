@@ -633,6 +633,7 @@ Parameters for creating a token transfer transaction.
 | ------ | ------ | ------ |
 | <a id="amount"></a> `amount` | `number` | Amount to transfer in the token's smallest unit (e.g., lamports for SOL) |
 | <a id="destination"></a> `destination` | `string` | Public key of the destination wallet (not token account) |
+| <a id="light_token"></a> `light_token?` | `boolean` | Use Light Token transfer instead of SPL. Requires `zk_compression_rpc_url` on the server. |
 | <a id="signer_key-5"></a> `signer_key?` | `string` | Optional signer address for the transaction |
 | <a id="source"></a> `source` | `string` | Public key of the source wallet (not token account) |
 | <a id="token"></a> `token` | `string` | Mint address of the token to transfer |

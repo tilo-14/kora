@@ -328,6 +328,19 @@ A Claude skill is available at `.claude/skills/release.md` that automates the co
   - Jupiter API integration for token pricing
   - Price calculation for fee estimation
 
+- **light_token/** - Light Token transfer support (server-side):
+  - `constants.rs` - Light Protocol program IDs and lookup table addresses
+  - `types.rs` - ZK compression RPC response types (CompressedTokenAccount, ValidityProof)
+  - `rpc_client.rs` - Client for ZK compression RPC (compressed accounts, validity proofs)
+  - `instruction_builder.rs` - Compressed account selection (greedy descending sort)
+  - `conversions.rs` - Type conversions from ZK RPC types to kora-light-client types
+  - `transaction.rs` - V0 transaction builder with Light Protocol lookup table
+  - Three transfer paths in `transfer_transaction.rs`:
+    - **Hot**: On-chain balance sufficient → `TransferChecked`
+    - **Cold**: Only compressed balance → `Transfer2` with validity proofs
+    - **Mixed**: Partial hot + cold → `Decompress` + `TransferChecked` in one transaction
+  - Requires `zk_compression_rpc_url` in kora.toml and Light Protocol programs in allowlist
+
 - **config.rs** - TOML-based configuration system with validation
 - **state.rs** - Global signer state management
 - **cache.rs** - Token account caching

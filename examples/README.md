@@ -13,6 +13,7 @@ Specific documentation for the following topics is available:
 - [Authentication Reference Guide](https://launch.solana.com/docs/kora/operators/authentication)
 - [Fees Reference Guide](https://launch.solana.com/docs/kora/operators/fees)
 - [Kora Monitoring & Metrics](https://launch.solana.com/docs/kora/operators/monitoring)
+- [Light Token Transfers](examples/light-token/) — Gasless Light Token transfers with server-side balance detection
 
 ## Community & Support
 

@@ -6,8 +6,8 @@ rate_limit = 100
 # ZK compression RPC URL — required for light_token: true transfers
 zk_compression_rpc_url = "https://devnet.helius-rpc.com?api-key=2a0ce09b-30d3-40c7-bcd1-d379e08db70b"
 
-# Light Protocol lookup table for devnet
-light_lut_address = "qAJZMgnQJ8G6vA3WRcjD9Jan1wtKkaCFWLWskxJrR5V"
+# Light Protocol lookup table (same for mainnet and devnet)
+light_lut_address = "9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza"
 
 [kora.cache]
 enabled = false

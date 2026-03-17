@@ -5,6 +5,7 @@ Complete reference for all kora.toml sections and fields.
 ## Table of Contents
 
 - [Core Settings](#core-settings)
+- [Light Token](#light-token)
 - [Authentication](#authentication)
 - [Caching](#caching)
 - [Usage Limits](#usage-limits)
@@ -27,6 +28,57 @@ payment_address = "<pubkey>"  # Optional: payment destination (defaults to signe
 ```
 
 `payment_address`: If set, fee payments go to this address instead of the signer. Useful for separating signing keys from payment collection.
+
+---
+
+## Light Token
+
+Enable Light Token transfers via `transferTransaction` with `light_token: true`. Light Token reduces token account creation cost by 200x compared to SPL, with sponsored rent-exemption. Inactive balances auto-compress; Kora detects and loads them server-side when this flag is set.
+
+### Required settings
+
+```toml
+[kora]
+zk_compression_rpc_url = "https://devnet.helius-rpc.com?api-key=YOUR_KEY"
+```
+
+`zk_compression_rpc_url`: A ZK compression-enabled Solana RPC endpoint (e.g., [Helius](https://helius.dev)). Required for Light Token transfers. Must start with `http://` or `https://`. Kora uses this to fetch compressed token accounts and validity proofs.
+
+### Optional settings
+
+```toml
+[kora]
+light_lut_address = "9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza"
+```
+
+`light_lut_address`: Override the Light Protocol address lookup table. If omitted, Kora auto-detects based on the RPC URL. Currently the same address for mainnet and devnet: `9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza`.
+
+### Program allowlist
+
+Add Light Protocol programs to `allowed_programs` in `[validation]`:
+
+```toml
+allowed_programs = [
+    # ... existing programs ...
+    "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",  # Light Token Program
+    "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",  # Light System Program
+    "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq",  # Account Compression Program
+]
+```
+
+### Fee payer writable access
+
+Light Token Program instructions reference the fee payer as a writable account for rent top-ups. Add it to the writable allowlist:
+
+```toml
+[validation.fee_payer_policy]
+allow_fee_payer_writable_in_programs = [
+    "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",  # Light Token Program
+    "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",  # Light System Program
+]
+```
+
+Without this, Kora rejects Light Token transactions because the fee payer appears as writable in an unrecognized program.
 
 ---
 

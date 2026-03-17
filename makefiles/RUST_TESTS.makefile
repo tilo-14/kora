@@ -25,6 +25,11 @@ integration-test-fresh:
 	$(call print_header,KORA INTEGRATION TEST SUITE - FRESH SETUP)
 	@cargo run -p tests --bin test_runner -- --force-refresh
 
+# Run Light Token integration tests (separate from SPL tests, requires `light test-validator`)
+integration-test-light:
+	$(call print_header,LIGHT TOKEN INTEGRATION TEST SUITE)
+	@bash tests/scripts/run-light-tests.sh
+
 # Run specific test phases with filters (for CI)
 integration-test-filtered:
 	$(call print_header,KORA INTEGRATION TEST SUITE - FILTERED)

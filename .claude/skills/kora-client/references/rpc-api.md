@@ -102,6 +102,7 @@ Creates a token transfer transaction with Kora as fee payer.
   source: string;         // source wallet pubkey (not token account)
   destination: string;    // destination wallet pubkey (not token account)
   signer_key?: string;
+  light_token?: boolean;  // use Light Token transfer instead of SPL (requires server-side zk_compression_rpc_url)
 }
 ```
 
@@ -117,6 +118,13 @@ Creates a token transfer transaction with Kora as fee payer.
 ```
 
 Note: `instructions` is populated client-side by the SDK from the message. The raw RPC response does not include parsed instructions.
+
+**Light Token mode** (`light_token: true`): Kora builds the transfer server-side using Light Protocol. It detects the sender's balance across hot (on-chain associated token account) and cold (compressed) storage, then selects the optimal path:
+- **Hot**: `TransferChecked` from the sender's Light Token associated token account
+- **Cold**: `Transfer2` with compressed inputs and validity proofs
+- **Mixed**: Decompress shortfall into the associated token account, then `TransferChecked`
+
+Returns a V0 transaction referencing the Light Protocol address lookup table. Requires `zk_compression_rpc_url` in the server's kora.toml.
 
 ---
 

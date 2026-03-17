@@ -2,7 +2,7 @@
  * E2E test for Kora's transferTransaction with light_token: true.
  *
  * Tests all three transfer paths against a running Kora server on devnet:
- *   1. HOT  — sufficient on-chain ATA balance → TransferChecked (disc 12)
+ *   1. HOT  — sufficient on-chain associated token account balance → TransferChecked (disc 12)
  *   2. MIXED — hot < amount but hot+cold >= amount → decompress + TransferChecked
  *   3. COLD  — zero hot balance → Transfer2 (disc 101) with validity proof
  *
@@ -20,8 +20,12 @@ import {
   Connection,
   VersionedTransaction,
 } from "@solana/web3.js";
+import { KoraClient } from "@solana/kora";
 import { Rpc } from "@lightprotocol/stateless.js";
-import { getAssociatedTokenAddressInterface } from "@lightprotocol/compressed-token/unified";
+import {
+  getAssociatedTokenAddressInterface,
+  getAtaInterface,
+} from "@lightprotocol/compressed-token/unified";
 import bs58 from "bs58";
 import dotenv from "dotenv";
 import path from "path";
@@ -47,20 +51,7 @@ function keypairFromEnv(key: string): Keypair {
   return Keypair.fromSecretKey(bs58.decode(getEnvOrThrow(key)));
 }
 
-async function koraRpc(method: string, params: Record<string, unknown>) {
-  const res = await fetch(KORA_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const json = (await res.json()) as { result?: any; error?: any };
-  if (json.error) {
-    throw new Error(
-      `Kora RPC error (${method}): ${JSON.stringify(json.error)}`
-    );
-  }
-  return json.result;
-}
+const kora = new KoraClient({ rpcUrl: KORA_RPC_URL });
 
 function coSignAndSubmit(
   base64Tx: string,
@@ -82,15 +73,14 @@ function findDiscriminators(base64Tx: string): number[] {
 }
 
 async function getHotBalance(
-  connection: Connection,
+  rpc: Rpc,
   owner: PublicKey,
   mint: PublicKey
 ): Promise<number> {
   const ata = getAssociatedTokenAddressInterface(mint, owner);
   try {
-    const info = await connection.getAccountInfo(ata);
-    if (!info || info.data.length < 72) return 0;
-    return Number(info.data.readBigUInt64LE(64));
+    const account = await getAtaInterface(rpc, ata, owner, mint);
+    return Number(account.parsed.amount);
   } catch {
     return 0;
   }
@@ -130,7 +120,7 @@ async function transferAndConfirm(
   amount: number,
   connection: Connection
 ): Promise<{ signature: string; discriminators: number[] }> {
-  const result = await koraRpc("transferTransaction", {
+  const result = await kora.transferTransaction({
     source: sender.publicKey.toBase58(),
     destination: destination.toBase58(),
     token: mint.toBase58(),
@@ -141,7 +131,7 @@ async function transferAndConfirm(
   const discriminators = findDiscriminators(result.transaction);
   const { signedBase64 } = coSignAndSubmit(result.transaction, sender);
 
-  const sendResult = await koraRpc("signAndSendTransaction", {
+  const sendResult = await kora.signAndSendTransaction({
     transaction: signedBase64,
   });
 
@@ -182,7 +172,7 @@ async function main() {
 
   // Verify Kora is running
   try {
-    await koraRpc("getConfig", {});
+    await kora.getConfig();
     console.log("Kora server: OK");
   } catch {
     console.error("Kora server not reachable at", KORA_RPC_URL);
@@ -190,7 +180,7 @@ async function main() {
   }
 
   // Check starting balances
-  let hot = await getHotBalance(connection, sender.publicKey, mint);
+  let hot = await getHotBalance(rpc, sender.publicKey, mint);
   let cold = await getColdBalance(rpc, sender.publicKey, mint);
   console.log("\n--- Starting balances ---");
   console.log("  Hot:", formatTokens(hot));
@@ -233,7 +223,7 @@ async function main() {
 
       // Wait for balance to settle
       await new Promise((r) => setTimeout(r, 2000));
-      hot = await getHotBalance(connection, sender.publicKey, mint);
+      hot = await getHotBalance(rpc, sender.publicKey, mint);
       cold = await getColdBalance(rpc, sender.publicKey, mint);
       console.log("  Post-transfer: hot=" + formatTokens(hot) + " cold=" + formatTokens(cold));
     } catch (e: any) {
@@ -249,7 +239,7 @@ async function main() {
   // ---------------------------------------------------------------
   console.log("\n=== TEST 2: MIXED PATH ===");
   // Refresh balances
-  hot = await getHotBalance(connection, sender.publicKey, mint);
+  hot = await getHotBalance(rpc, sender.publicKey, mint);
   cold = await getColdBalance(rpc, sender.publicKey, mint);
   console.log("  Current: hot=" + formatTokens(hot) + " cold=" + formatTokens(cold));
 
@@ -276,7 +266,7 @@ async function main() {
       results.push({ name: "MIXED", passed: true, signature });
 
       await new Promise((r) => setTimeout(r, 2000));
-      hot = await getHotBalance(connection, sender.publicKey, mint);
+      hot = await getHotBalance(rpc, sender.publicKey, mint);
       cold = await getColdBalance(rpc, sender.publicKey, mint);
       console.log("  Post-transfer: hot=" + formatTokens(hot) + " cold=" + formatTokens(cold));
     } catch (e: any) {
@@ -291,7 +281,7 @@ async function main() {
   // Expected: Transfer2 (disc 101), no TransferChecked.
   // ---------------------------------------------------------------
   console.log("\n=== TEST 3: COLD PATH ===");
-  hot = await getHotBalance(connection, sender.publicKey, mint);
+  hot = await getHotBalance(rpc, sender.publicKey, mint);
   cold = await getColdBalance(rpc, sender.publicKey, mint);
   console.log("  Current: hot=" + formatTokens(hot) + " cold=" + formatTokens(cold));
 

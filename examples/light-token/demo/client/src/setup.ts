@@ -3,8 +3,8 @@
  * It creates keypairs, airdrops SOL, initializes a local USDC mint,
  * and creates associated token accounts.
  *
- * For Light Token transfers, the sender needs compressed token balances.
- * In production, users would already hold compressed tokens. For this demo,
+ * For Light Token transfers, the sender needs Light Token balance (hot or cold).
+ * In production, users would already hold Light Token balance. For this demo,
  * the setup creates standard SPL token accounts that can be compressed later.
  *
  * Requirements:

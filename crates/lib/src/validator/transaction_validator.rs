@@ -470,7 +470,7 @@ mod tests {
 
     use super::*;
     use solana_message::{Message, VersionedMessage};
-    use solana_sdk::instruction::Instruction;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
     use solana_system_interface::{
         instruction::{
             assign, create_account, create_account_with_seed, transfer, transfer_with_seed,
@@ -1862,5 +1862,129 @@ mod tests {
 
         // Should pass - no AdvanceNonceAccount instruction
         assert!(validator.validate_transaction(&mut transaction, &rpc_client).await.is_ok());
+    }
+
+    // --- Writable-account guard tests ---
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fee_payer_writable_in_allowed_program_passes() {
+        let fee_payer = Pubkey::new_unique();
+        let unknown_program = Pubkey::new_unique();
+        let mut policy = FeePayerPolicy::default();
+        policy.allow_fee_payer_writable_in_programs = vec![unknown_program.to_string()];
+        let config = ConfigMockBuilder::new()
+            .with_price_source(PriceSource::Mock)
+            .with_allowed_programs(vec![SYSTEM_PROGRAM_ID.to_string(), unknown_program.to_string()])
+            .with_max_allowed_lamports(1_000_000)
+            .with_fee_payer_policy(policy)
+            .build();
+        setup_both_configs(config);
+        let rpc_client = RpcMockBuilder::new().build();
+        let validator = TransactionValidator::new(fee_payer).unwrap();
+
+        // Instruction in unknown_program with fee_payer as writable
+        let ix = Instruction {
+            program_id: unknown_program,
+            accounts: vec![AccountMeta::new(fee_payer, true)],
+            data: vec![0],
+        };
+        let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&fee_payer)));
+        let mut transaction =
+            TransactionUtil::new_unsigned_versioned_transaction_resolved(message).unwrap();
+
+        assert!(validator.validate_transaction(&mut transaction, &rpc_client).await.is_ok());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fee_payer_writable_in_unknown_program_rejected() {
+        let fee_payer = Pubkey::new_unique();
+        let unknown_program = Pubkey::new_unique();
+        let config = ConfigMockBuilder::new()
+            .with_price_source(PriceSource::Mock)
+            .with_allowed_programs(vec![SYSTEM_PROGRAM_ID.to_string(), unknown_program.to_string()])
+            .with_max_allowed_lamports(1_000_000)
+            .with_fee_payer_policy(FeePayerPolicy::default())
+            // Empty allowlist — no programs allowed to use fee payer as writable
+            .build();
+        setup_both_configs(config);
+        let rpc_client = RpcMockBuilder::new().build();
+        let validator = TransactionValidator::new(fee_payer).unwrap();
+
+        let ix = Instruction {
+            program_id: unknown_program,
+            accounts: vec![AccountMeta::new(fee_payer, true)],
+            data: vec![0],
+        };
+        let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&fee_payer)));
+        let mut transaction =
+            TransactionUtil::new_unsigned_versioned_transaction_resolved(message).unwrap();
+
+        let result = validator.validate_transaction(&mut transaction, &rpc_client).await;
+        assert!(result.is_err());
+        assert!(
+            format!("{:?}", result.unwrap_err()).contains("allow_fee_payer_writable_in_programs")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fee_payer_readonly_in_unknown_program_passes() {
+        let fee_payer = Pubkey::new_unique();
+        let other_account = Pubkey::new_unique();
+        let unknown_program = Pubkey::new_unique();
+        let config = ConfigMockBuilder::new()
+            .with_price_source(PriceSource::Mock)
+            .with_allowed_programs(vec![SYSTEM_PROGRAM_ID.to_string(), unknown_program.to_string()])
+            .with_max_allowed_lamports(1_000_000)
+            .with_fee_payer_policy(FeePayerPolicy::default())
+            .build();
+        setup_both_configs(config);
+        let rpc_client = RpcMockBuilder::new().build();
+        let validator = TransactionValidator::new(fee_payer).unwrap();
+
+        // Instruction uses other_account as writable (not fee_payer) — should pass
+        let ix = Instruction {
+            program_id: unknown_program,
+            accounts: vec![AccountMeta::new(other_account, false)],
+            data: vec![0],
+        };
+        let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&fee_payer)));
+        let mut transaction =
+            TransactionUtil::new_unsigned_versioned_transaction_resolved(message).unwrap();
+
+        assert!(validator.validate_transaction(&mut transaction, &rpc_client).await.is_ok());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_fee_payer_writable_in_system_program_uses_policy() {
+        let fee_payer = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        // Restrictive policy: disallow system transfers
+        let mut policy = FeePayerPolicy::default();
+        policy.system.allow_transfer = false;
+
+        let config = ConfigMockBuilder::new()
+            .with_price_source(PriceSource::Mock)
+            .with_allowed_programs(vec![SYSTEM_PROGRAM_ID.to_string()])
+            .with_max_allowed_lamports(1_000_000)
+            .with_fee_payer_policy(policy)
+            .build();
+        setup_both_configs(config);
+        let rpc_client = RpcMockBuilder::new().build();
+        let validator = TransactionValidator::new(fee_payer).unwrap();
+
+        // System transfer with fee payer as sender — handled by system policy, not writable guard
+        let ix = transfer(&fee_payer, &recipient, 100);
+        let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&fee_payer)));
+        let mut transaction =
+            TransactionUtil::new_unsigned_versioned_transaction_resolved(message).unwrap();
+
+        let result = validator.validate_transaction(&mut transaction, &rpc_client).await;
+        // Should fail due to system policy (allow_transfer = false), not writable guard
+        assert!(result.is_err());
+        assert!(format!("{:?}", result.unwrap_err()).contains("System Transfer"));
     }
 }

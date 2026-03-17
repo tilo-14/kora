@@ -159,6 +159,72 @@ const result = await client.signAndSendTransaction({ transaction: base64Final })
 
 ---
 
+## Light Token transfer
+
+Gasless Light Token transfers via `transferTransaction` with `light_token: true`. Light Token accounts auto-compress inactive balances. With this flag, Kora detects and loads cold balances server-side, so the client flow stays the same.
+
+### Prerequisites
+
+- Kora server with `zk_compression_rpc_url` configured
+- Light Protocol programs in `allowed_programs`
+- Light Token Program in `allow_fee_payer_writable_in_programs`
+- Sender holds Light Token balance (hot, cold, or both)
+
+### Minimal example
+
+```ts
+import { KoraClient } from "@solana/kora";
+import { Keypair, Connection, VersionedTransaction } from "@solana/web3.js";
+
+const client = new KoraClient({ rpcUrl: "http://localhost:8080/" });
+const connection = new Connection("https://devnet.helius-rpc.com?api-key=...");
+
+// 1. Kora builds the Light Token transfer server-side
+const { transaction } = await client.transferTransaction({
+  amount: 1_000_000,
+  token: mintAddress,
+  source: sender.publicKey.toBase58(),
+  destination: destination.publicKey.toBase58(),
+  light_token: true,
+});
+
+// 2. Sender signs
+const tx = VersionedTransaction.deserialize(Buffer.from(transaction, "base64"));
+tx.sign([sender]);
+
+// 3. Kora co-signs as fee payer
+const { signed_transaction } = await client.signTransaction({
+  transaction: Buffer.from(tx.serialize()).toString("base64"),
+});
+
+// 4. Send to the network
+const finalTx = VersionedTransaction.deserialize(Buffer.from(signed_transaction, "base64"));
+const signature = await connection.sendRawTransaction(finalTx.serialize());
+```
+
+### With payment instruction
+
+For paid transfers, combine Light Token transfer instructions with a payment instruction:
+
+1. Call `transferTransaction({ light_token: true })` to get transfer instructions
+2. Call `getPaymentInstruction()` with the base transaction to get the fee payment instruction
+3. Build a V0 transaction including both sets of instructions plus the Light Protocol address lookup table
+4. Sign and submit via `signTransaction`
+
+See `examples/light-token/demo/client/src/full-demo.ts` for a complete working example.
+
+### Transfer paths
+
+Kora automatically detects the optimal path based on the sender's balance:
+
+| Path | Condition | Instructions | ZK proofs |
+|------|-----------|-------------|-----------|
+| Hot | On-chain balance >= amount | `TransferChecked` | No |
+| Cold | Zero on-chain balance | `Transfer2` with compressed inputs | Yes |
+| Mixed | On-chain + compressed >= amount | `Decompress` + `TransferChecked` | Yes |
+
+---
+
 ## Jito Bundle Integration
 
 Requires Kora 2.2+. Enables gasless Jito bundles (up to 5 atomic transactions).

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::{error::KoraError, transaction::TransactionUtil, CacheUtil};
 use std::str::FromStr;
 
-use super::constants::{light_lut_devnet, light_lut_mainnet};
+use super::constants::{LIGHT_LUT_DEVNET, LIGHT_LUT_MAINNET};
 
 /// Detect whether an RPC URL points to devnet.
 ///
@@ -18,12 +18,12 @@ use super::constants::{light_lut_devnet, light_lut_mainnet};
 /// otherwise default to mainnet.
 fn detect_lut_address(rpc_url: &str) -> Pubkey {
     if rpc_url.contains("devnet") {
-        light_lut_devnet()
+        LIGHT_LUT_DEVNET
     } else if rpc_url.contains("localhost") || rpc_url.contains("127.0.0.1") {
         // Local validator — use devnet LUT as a reasonable default
-        light_lut_devnet()
+        LIGHT_LUT_DEVNET
     } else {
-        light_lut_mainnet()
+        LIGHT_LUT_MAINNET
     }
 }
 
@@ -91,18 +91,18 @@ mod tests {
     #[test]
     fn test_detect_lut_devnet() {
         let lut = detect_lut_address("https://api.devnet.solana.com");
-        assert_eq!(lut, light_lut_devnet());
+        assert_eq!(lut, LIGHT_LUT_DEVNET);
     }
 
     #[test]
     fn test_detect_lut_mainnet() {
         let lut = detect_lut_address("https://api.mainnet-beta.solana.com");
-        assert_eq!(lut, light_lut_mainnet());
+        assert_eq!(lut, LIGHT_LUT_MAINNET);
     }
 
     #[test]
     fn test_detect_lut_localhost() {
         let lut = detect_lut_address("http://127.0.0.1:8899");
-        assert_eq!(lut, light_lut_devnet());
+        assert_eq!(lut, LIGHT_LUT_DEVNET);
     }
 }

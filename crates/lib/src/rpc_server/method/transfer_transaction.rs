@@ -32,7 +32,7 @@ pub struct TransferTransactionRequest {
     /// Optional signer signer_key to ensure consistency across related RPC calls
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signer_key: Option<String>,
-    /// Use Light Token (compressed token) transfer instead of SPL.
+    /// Use Light Token transfer instead of SPL.
     /// Requires `zk_compression_rpc_url` to be configured on the server.
     #[serde(default)]
     pub light_token: bool,
@@ -63,7 +63,7 @@ pub async fn transfer_transaction(
     let token_mint = Pubkey::from_str(&request.token)
         .map_err(|e| KoraError::ValidationError(format!("Invalid token address: {e}")))?;
 
-    // Branch: Light Token (compressed token) transfer
+    // Branch: Light Token transfer
     if request.light_token {
         return light_token_transfer(
             rpc_client,
@@ -177,9 +177,9 @@ pub async fn transfer_transaction(
 //
 // Mirrors the SDK's `createTransferInterfaceInstructions` behavior:
 // 1. Map NATIVE_SOL -> wSOL mint
-// 2. Detect mint type (light-token vs SPL) for correct ATA derivation
+// 2. Detect mint type (Light Token vs SPL) for correct ATA derivation
 // 3. Check hot (on-chain ATA) balance
-// 4. If hot sufficient -> TransferChecked (light-token or SPL depending on mint)
+// 4. If hot sufficient -> TransferChecked (Light Token or SPL depending on mint)
 // 5. Check cold (compressed) balance
 // 6. If cold only -> Transfer2 with compressed inputs + proofs
 // 7. If mixed -> decompress cold->hot, then transfer
@@ -202,22 +202,17 @@ async fn light_token_transfer(
     let lut_override = config.kora.light_lut_address.as_deref();
 
     // 1. Map NATIVE_SOL -> wSOL mint
-    let effective_mint = if *mint == Pubkey::from_str(NATIVE_SOL).unwrap_or_default() {
-        Pubkey::from_str(WSOL_MINT).map_err(|e| {
-            KoraError::InternalServerError(format!("Invalid wSOL mint constant: {e}"))
-        })?
-    } else {
-        *mint
-    };
+    let effective_mint =
+        if *mint == Pubkey::from_str(NATIVE_SOL).unwrap_or_default() { WSOL_MINT } else { *mint };
 
     // 2. Get decimals from the SPL/Token-2022 mint (works for any standard mint)
     let decimals = TokenUtil::get_mint_decimals(rpc_client.as_ref(), &effective_mint).await?;
 
-    // 3. Check hot balance using light-token ATA derivation (always when light_token: true)
+    // 3. Check hot balance using Light Token ATA derivation (always when light_token: true)
     let source_ata = kora_light_client::get_associated_token_address(source, &effective_mint);
     let hot_balance = match CacheUtil::get_account(rpc_client, &source_ata, false).await {
         Ok(account) => {
-            // Light-token ATAs are 272 bytes (not 165 like SPL), so Pack::unpack rejects them.
+            // Light Token ATAs are 272 bytes (not 165 like SPL), so Pack::unpack rejects them.
             // The token amount sits at offset 64 in the same SPL Account layout.
             if account.data.len() >= 72 {
                 u64::from_le_bytes(account.data[64..72].try_into().unwrap_or_default())
@@ -303,8 +298,8 @@ async fn light_token_transfer(
     .await
 }
 
-// Hot path: source has sufficient balance in on-chain light-token ATA.
-// Uses light-token TransferChecked (discriminator 12) with V0 + LUT.
+// Hot path: source has sufficient balance in on-chain Light Token ATA.
+// Uses Light Token TransferChecked (discriminator 12) with V0 + LUT.
 #[allow(clippy::too_many_arguments)]
 async fn hot_transfer(
     rpc_client: &Arc<RpcClient>,
@@ -358,7 +353,7 @@ async fn fetch_and_convert_proof(
     Ok((inputs, compressed_proof))
 }
 
-// Build ATA-creation + Light Token TransferChecked instructions for a light-token mint.
+// Build ATA-creation + Light Token TransferChecked instructions for a Light Token mint.
 // Uses kora-light-client's ATA derivation and TransferChecked (discriminator 12).
 #[allow(clippy::too_many_arguments)]
 async fn build_light_token_transfer_instructions(
@@ -378,18 +373,22 @@ async fn build_light_token_transfer_instructions(
     // Create destination ATA if needed (idempotent — no-op if it already exists)
     if CacheUtil::get_account(rpc_client, &dest_ata, false).await.is_err() {
         instructions.push(
-            kora_light_client::create_ata_idempotent_instruction(fee_payer, destination, mint)
-                .map_err(|e| {
-                    KoraError::InvalidTransaction(format!(
-                        "Failed to create light-token ATA instruction: {e}"
-                    ))
-                })?,
+            kora_light_client::create_ata::create_ata_idempotent_instruction(
+                fee_payer,
+                destination,
+                mint,
+            )
+            .map_err(|e| {
+                KoraError::InvalidTransaction(format!(
+                    "Failed to create Light Token ATA instruction: {e}"
+                ))
+            })?,
         );
     }
 
     // Light Token TransferChecked (discriminator 12)
     instructions.push(
-        kora_light_client::create_transfer_checked_instruction(
+        kora_light_client::transfer::create_transfer_checked_instruction(
             &source_ata,
             &dest_ata,
             mint,
@@ -400,7 +399,7 @@ async fn build_light_token_transfer_instructions(
         )
         .map_err(|e| {
             KoraError::InvalidTransaction(format!(
-                "Failed to create light-token transfer instruction: {e}"
+                "Failed to create Light Token transfer instruction: {e}"
             ))
         })?,
     );
@@ -461,7 +460,7 @@ async fn cold_transfer(
     let (inputs, compressed_proof) =
         fetch_and_convert_proof(light_rpc, compressed_accounts, amount).await?;
 
-    let instruction = kora_light_client::create_transfer2_instruction(
+    let instruction = kora_light_client::transfer::create_transfer2_instruction(
         fee_payer,
         source,
         mint,
@@ -485,8 +484,8 @@ async fn cold_transfer(
 }
 
 // Mixed path: source has some hot balance + cold balance.
-// Decompresses cold accounts into the source's light-token ATA, then
-// transfers the full amount via light-token TransferChecked.
+// Decompresses cold accounts into the source's Light Token ATA, then
+// transfers the full amount via Light Token TransferChecked.
 #[allow(clippy::too_many_arguments)]
 async fn mixed_transfer(
     rpc_client: &Arc<RpcClient>,
@@ -506,11 +505,11 @@ async fn mixed_transfer(
     let (inputs, compressed_proof) =
         fetch_and_convert_proof(light_rpc, compressed_accounts, shortfall).await?;
 
-    // Derive source ATA using light-token derivation
+    // Derive source ATA using Light Token derivation
     let source_ata = kora_light_client::get_associated_token_address(source, mint);
 
-    // Build decompress instruction (cold -> source light-token ATA)
-    let decompress_ix = kora_light_client::create_decompress_instruction(
+    // Build decompress instruction (cold -> source Light Token ATA)
+    let decompress_ix = kora_light_client::decompress::create_decompress_instruction(
         fee_payer,
         source,
         mint,
@@ -523,7 +522,7 @@ async fn mixed_transfer(
     )
     .map_err(|e| KoraError::InvalidTransaction(format!("Decompress error: {e}")))?;
 
-    // Build transfer instructions using light-token program
+    // Build transfer instructions using Light Token program
     let mut transfer_instructions = build_light_token_transfer_instructions(
         rpc_client,
         fee_payer,

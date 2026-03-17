@@ -1,11 +1,11 @@
 /**
- * Devnet setup for light-token e2e testing.
+ * Devnet setup for Light Token e2e testing.
  *
- * Creates a standard SPL mint, wraps tokens into light-token ATAs (hot state),
+ * Creates a standard SPL mint, wraps tokens into Light Token associated token accounts (hot state),
  * and mints compressed tokens (cold state) for testing both paths.
  *
  * Flow mirrors production: SPL mint → register with Light Token Program →
- * wrap SPL tokens into light-token ATAs.
+ * wrap SPL tokens into Light Token associated token accounts.
  *
  * Requirements:
  * - Funded devnet keypairs (airdrop SOL first if needed)
@@ -111,7 +111,7 @@ async function airdropIfNeeded(
 }
 
 async function main() {
-  console.log("=== Light-Token Devnet Setup (SPL + Wrap Flow) ===\n");
+  console.log("=== Light Token Devnet Setup (SPL + Wrap Flow) ===\n");
 
   const zkRpcUrl = getEnvOrThrow("ZK_COMPRESSION_RPC_URL");
   // Use Helius for everything (the public devnet endpoint rate-limits airdrops)
@@ -219,7 +219,7 @@ async function main() {
     // ATA may already exist
     return getAssociatedTokenAddressSync(mintAddress, sender.publicKey);
   });
-  console.log("  Sender SPL ATA:", senderSplAta.toBase58());
+  console.log("  Sender SPL associated token account:", senderSplAta.toBase58());
 
   const totalSplAmount = HOT_MINT_AMOUNT + COLD_MINT_AMOUNT;
   const mintSig = await mintTo(
@@ -248,29 +248,29 @@ async function main() {
     }
   }
 
-  // --- Step 4: Create light-token ATAs ---
-  console.log("\n--- Step 4: Create light-token ATAs ---");
+  // --- Step 4: Create Light Token associated token accounts ---
+  console.log("\n--- Step 4: Create Light Token associated token accounts ---");
 
-  console.log("  Creating sender light-token ATA...");
+  console.log("  Creating sender Light Token associated token account...");
   const senderLightAta = await createAtaInterfaceIdempotent(
     rpc,
     payer,
     mintAddress,
     sender.publicKey
   );
-  console.log("  Sender light-token ATA:", senderLightAta.toBase58());
+  console.log("  Sender Light Token associated token account:", senderLightAta.toBase58());
 
-  console.log("  Creating destination light-token ATA...");
+  console.log("  Creating destination Light Token associated token account...");
   const destLightAta = await createAtaInterfaceIdempotent(
     rpc,
     payer,
     mintAddress,
     destination.publicKey
   );
-  console.log("  Destination light-token ATA:", destLightAta.toBase58());
+  console.log("  Destination Light Token associated token account:", destLightAta.toBase58());
 
-  // --- Step 5: Wrap SPL tokens → light-token ATA (hot state) ---
-  console.log("\n--- Step 5: Wrap SPL tokens to light-token ATA (hot state) ---");
+  // --- Step 5: Wrap SPL tokens → Light Token associated token account (hot state) ---
+  console.log("\n--- Step 5: Wrap SPL tokens to Light Token associated token account (hot state) ---");
   const wrapSig = await wrap(
     rpc,
     payer,
@@ -281,7 +281,7 @@ async function main() {
     BigInt(HOT_MINT_AMOUNT)
   );
   console.log(
-    `  Wrapped ${HOT_MINT_AMOUNT / 10 ** DECIMALS} tokens to light-token ATA`
+    `  Wrapped ${HOT_MINT_AMOUNT / 10 ** DECIMALS} tokens to Light Token associated token account`
   );
   console.log("  Tx:", wrapSig);
 
@@ -309,11 +309,11 @@ async function main() {
     // Replace allowed_tokens and allowed_spl_paid_tokens mint addresses
     tomlContent = tomlContent.replace(
       /allowed_tokens\s*=\s*\[[\s\S]*?\]/,
-      `allowed_tokens = [\n    "${mintAddress.toBase58()}", # SPL mint for light-token testing\n]`
+      `allowed_tokens = [\n    "${mintAddress.toBase58()}", # SPL mint for Light Token testing\n]`
     );
     tomlContent = tomlContent.replace(
       /allowed_spl_paid_tokens\s*=\s*\[[\s\S]*?\]/,
-      `allowed_spl_paid_tokens = [\n    "${mintAddress.toBase58()}", # SPL mint for light-token testing\n]`
+      `allowed_spl_paid_tokens = [\n    "${mintAddress.toBase58()}", # SPL mint for Light Token testing\n]`
     );
     await writeFile(koraTomlPath, tomlContent);
     console.log("  Updated kora.toml with mint:", mintAddress.toBase58());
@@ -329,7 +329,7 @@ async function main() {
   console.log(`  Destination: ${destination.publicKey.toBase58()}`);
   console.log(`  Kora fee payer: ${koraFeePayer.publicKey.toBase58()}`);
   console.log(
-    `  Hot balance (light-token ATA): ${HOT_MINT_AMOUNT / 10 ** DECIMALS} tokens`
+    `  Hot balance (Light Token associated token account): ${HOT_MINT_AMOUNT / 10 ** DECIMALS} tokens`
   );
   console.log(
     `  Cold balance (compressed): ${COLD_MINT_AMOUNT / 10 ** DECIMALS} tokens`

@@ -1,12 +1,12 @@
 /**
- * Minimal example: gasless light token (compressed token) transfer via Kora.
+ * Minimal example: gasless Light Token transfer via Kora.
  *
  * Kora handles all compression complexity server-side when you pass
  * light_token: true to transferTransaction. The client just signs and submits.
  *
  * Prerequisites:
  * - Running Kora server with light_token config (see server/kora.toml)
- * - Sender holds compressed tokens (run devnet-setup.ts first)
+ * - Sender holds Light Token balance (run devnet-setup.ts first)
  * - Environment variables in ../.env
  */
 import { KoraClient } from "@solana/kora";
@@ -43,7 +43,7 @@ async function main() {
   console.log("Destination:", destination.publicKey.toBase58());
   console.log("Mint:", mint);
 
-  // 1. Kora builds the compressed token transfer transaction.
+  // 1. Kora builds the Light Token transfer transaction.
   //    With light_token: true, Kora fetches validity proofs, resolves
   //    Merkle trees, and includes the Light Protocol lookup table.
   const transferRequest = {
@@ -77,8 +77,13 @@ async function main() {
   const signature = await connection.sendRawTransaction(finalTx.serialize());
   await connection.confirmTransaction(signature, "confirmed");
 
-  console.log("\nLight token transfer confirmed!");
+  console.log("\nLight Token transfer confirmed!");
   console.log("Signature:", signature);
+
+  // Alternative: use signAndSendTransaction for a simpler flow
+  // const { signature } = await client.signAndSendTransaction({
+  //   transaction: signedBase64,
+  // });
 }
 
 main().catch((e) => console.error("Error:", e));

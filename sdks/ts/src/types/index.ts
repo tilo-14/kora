@@ -12,7 +12,7 @@ export interface TransferTransactionRequest {
     amount: number;
     /** Public key of the destination wallet (not token account) */
     destination: string;
-    /** Use Light Token (compressed token) transfer instead of SPL. Requires zk_compression_rpc_url on server. */
+    /** Use Light Token transfer instead of SPL. Requires zk_compression_rpc_url on server. */
     light_token?: boolean;
     /** Optional signer address for the transaction */
     signer_key?: string;
