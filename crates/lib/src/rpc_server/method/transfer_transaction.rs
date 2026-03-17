@@ -73,6 +73,7 @@ pub async fn transfer_transaction(
             &destination,
             &token_mint,
             request.amount,
+            &validator,
         )
         .await;
     }
@@ -191,6 +192,7 @@ async fn light_token_transfer(
     destination: &Pubkey,
     mint: &Pubkey,
     amount: u64,
+    validator: &TransactionValidator,
 ) -> Result<TransferTransactionResponse, KoraError> {
     let config = get_config()?;
     let zk_rpc_url = config.kora.zk_compression_rpc_url.as_deref().ok_or_else(|| {
@@ -201,9 +203,28 @@ async fn light_token_transfer(
     })?;
     let lut_override = config.kora.light_lut_address.as_deref();
 
+    // 0. Pre-build validation (mirrors SPL path checks)
+    if validator.is_disallowed_account(source) {
+        return Err(KoraError::InvalidTransaction(format!(
+            "Source account {source} is disallowed"
+        )));
+    }
+    if validator.is_disallowed_account(destination) {
+        return Err(KoraError::InvalidTransaction(format!(
+            "Destination account {destination} is disallowed"
+        )));
+    }
+
     // 1. Map NATIVE_SOL -> wSOL mint
     let effective_mint =
         if *mint == Pubkey::from_str(NATIVE_SOL).unwrap_or_default() { WSOL_MINT } else { *mint };
+
+    if !validator.is_allowed_token(&effective_mint) {
+        return Err(KoraError::InvalidTransaction(format!(
+            "Mint {effective_mint} is not in the allowed token list"
+        )));
+    }
+    validator.validate_lamport_fee(amount)?;
 
     // 2. Get decimals from the SPL/Token-2022 mint (works for any standard mint)
     let decimals = TokenUtil::get_mint_decimals(rpc_client.as_ref(), &effective_mint).await?;
@@ -213,9 +234,17 @@ async fn light_token_transfer(
     let hot_balance = match CacheUtil::get_account(rpc_client, &source_ata, false).await {
         Ok(account) => {
             // Light Token ATAs are 272 bytes (not 165 like SPL), so Pack::unpack rejects them.
-            // The token amount sits at offset 64 in the same SPL Account layout.
+            // SPL Account layout: bytes 0-32 = mint, bytes 64-72 = amount (little-endian u64).
             if account.data.len() >= 72 {
-                u64::from_le_bytes(account.data[64..72].try_into().unwrap_or_default())
+                let account_mint = Pubkey::try_from(&account.data[0..32]).unwrap_or_default();
+                if account_mint != effective_mint {
+                    log::warn!(
+                        "Light Token ATA {source_ata} mint mismatch: expected {effective_mint}, got {account_mint}"
+                    );
+                    0
+                } else {
+                    u64::from_le_bytes(account.data[64..72].try_into().unwrap_or_default())
+                }
             } else {
                 0
             }
@@ -223,22 +252,22 @@ async fn light_token_transfer(
         Err(_) => 0u64,
     };
 
+    let ctx = LightTransferCtx {
+        rpc_client,
+        signer,
+        fee_payer,
+        source,
+        destination,
+        mint: &effective_mint,
+        amount,
+        zk_rpc_url,
+        lut_override,
+    };
+
     // 4. Hot balance sufficient -> transfer (fast path, no proofs needed)
     if hot_balance >= amount {
         log::debug!("Light Token hot path: hot_balance={hot_balance} >= amount={amount}");
-        return hot_transfer(
-            rpc_client,
-            signer,
-            fee_payer,
-            source,
-            destination,
-            &effective_mint,
-            amount,
-            decimals,
-            zk_rpc_url,
-            lut_override,
-        )
-        .await;
+        return hot_transfer(&ctx, decimals).await;
     }
 
     // 5. Check cold (compressed) balance
@@ -258,20 +287,7 @@ async fn light_token_transfer(
     // 6. Pure cold -> Transfer2 with compressed inputs (no hot balance at all)
     if hot_balance == 0 {
         log::debug!("Light Token cold path: cold_balance={cold_balance}, using Transfer2");
-        return cold_transfer(
-            rpc_client,
-            signer,
-            fee_payer,
-            source,
-            destination,
-            &effective_mint,
-            amount,
-            &compressed_accounts,
-            &light_rpc,
-            zk_rpc_url,
-            lut_override,
-        )
-        .await;
+        return cold_transfer(&ctx, &compressed_accounts, &light_rpc).await;
     }
 
     // 7. Mixed: decompress cold->hot first, then transfer the full amount
@@ -280,60 +296,49 @@ async fn light_token_transfer(
         "Light Token mixed path: hot={hot_balance}, cold={cold_balance}, \
          loading {shortfall} from cold, then transfer of {amount}"
     );
-    mixed_transfer(
-        rpc_client,
-        signer,
-        fee_payer,
-        source,
-        destination,
-        &effective_mint,
-        amount,
-        shortfall,
-        &compressed_accounts,
-        &light_rpc,
-        zk_rpc_url,
-        lut_override,
-        decimals,
-    )
-    .await
+    mixed_transfer(&ctx, shortfall, &compressed_accounts, &light_rpc, decimals).await
+}
+
+/// Shared context for Light Token transfer paths, reducing argument threading.
+struct LightTransferCtx<'a> {
+    rpc_client: &'a Arc<RpcClient>,
+    signer: &'a Arc<solana_keychain::Signer>,
+    fee_payer: &'a Pubkey,
+    source: &'a Pubkey,
+    destination: &'a Pubkey,
+    mint: &'a Pubkey,
+    amount: u64,
+    zk_rpc_url: &'a str,
+    lut_override: Option<&'a str>,
 }
 
 // Hot path: source has sufficient balance in on-chain Light Token ATA.
 // Uses Light Token TransferChecked (discriminator 12) with V0 + LUT.
-#[allow(clippy::too_many_arguments)]
 async fn hot_transfer(
-    rpc_client: &Arc<RpcClient>,
-    signer: &Arc<solana_keychain::Signer>,
-    fee_payer: &Pubkey,
-    source: &Pubkey,
-    destination: &Pubkey,
-    mint: &Pubkey,
-    amount: u64,
+    ctx: &LightTransferCtx<'_>,
     decimals: u8,
-    zk_rpc_url: &str,
-    lut_override: Option<&str>,
 ) -> Result<TransferTransactionResponse, KoraError> {
     let instructions = build_light_token_transfer_instructions(
-        rpc_client,
-        fee_payer,
-        source,
-        destination,
-        mint,
-        amount,
+        ctx.rpc_client,
+        ctx.fee_payer,
+        ctx.source,
+        ctx.destination,
+        ctx.mint,
+        ctx.amount,
         decimals,
     )
     .await?;
 
     let (mut transaction, blockhash) = build_light_token_v0_transaction(
-        rpc_client,
-        fee_payer,
+        ctx.rpc_client,
+        ctx.fee_payer,
         &instructions,
-        zk_rpc_url,
-        lut_override,
+        ctx.zk_rpc_url,
+        ctx.lut_override,
     )
     .await?;
 
-    sign_v0_and_build_response(signer, &mut transaction, fee_payer, blockhash).await
+    sign_v0_and_build_response(ctx.signer, &mut transaction, ctx.fee_payer, blockhash).await
 }
 
 // Fetch validity proof and convert compressed accounts to kora-light-client types.
@@ -443,76 +448,58 @@ async fn sign_v0_and_build_response(
 
 // Cold path: source has no hot balance, only compressed accounts.
 // Uses Transfer2 via kora-light-client with compressed inputs and validity proofs.
-#[allow(clippy::too_many_arguments)]
 async fn cold_transfer(
-    rpc_client: &Arc<RpcClient>,
-    signer: &Arc<solana_keychain::Signer>,
-    fee_payer: &Pubkey,
-    source: &Pubkey,
-    destination: &Pubkey,
-    mint: &Pubkey,
-    amount: u64,
+    ctx: &LightTransferCtx<'_>,
     compressed_accounts: &[crate::light_token::types::CompressedTokenAccount],
     light_rpc: &LightRpcClient,
-    zk_rpc_url: &str,
-    lut_override: Option<&str>,
 ) -> Result<TransferTransactionResponse, KoraError> {
     let (inputs, compressed_proof) =
-        fetch_and_convert_proof(light_rpc, compressed_accounts, amount).await?;
+        fetch_and_convert_proof(light_rpc, compressed_accounts, ctx.amount).await?;
 
     let instruction = kora_light_client::transfer::create_transfer2_instruction(
-        fee_payer,
-        source,
-        mint,
+        ctx.fee_payer,
+        ctx.source,
+        ctx.mint,
         &inputs,
         &compressed_proof,
-        destination,
-        amount,
+        ctx.destination,
+        ctx.amount,
     )
     .map_err(|e| KoraError::InvalidTransaction(format!("Light Token transfer error: {e}")))?;
 
     let (mut transaction, blockhash) = build_light_token_v0_transaction(
-        rpc_client,
-        fee_payer,
+        ctx.rpc_client,
+        ctx.fee_payer,
         &[instruction],
-        zk_rpc_url,
-        lut_override,
+        ctx.zk_rpc_url,
+        ctx.lut_override,
     )
     .await?;
 
-    sign_v0_and_build_response(signer, &mut transaction, fee_payer, blockhash).await
+    sign_v0_and_build_response(ctx.signer, &mut transaction, ctx.fee_payer, blockhash).await
 }
 
 // Mixed path: source has some hot balance + cold balance.
 // Decompresses cold accounts into the source's Light Token ATA, then
 // transfers the full amount via Light Token TransferChecked.
-#[allow(clippy::too_many_arguments)]
 async fn mixed_transfer(
-    rpc_client: &Arc<RpcClient>,
-    signer: &Arc<solana_keychain::Signer>,
-    fee_payer: &Pubkey,
-    source: &Pubkey,
-    destination: &Pubkey,
-    mint: &Pubkey,
-    amount: u64,
+    ctx: &LightTransferCtx<'_>,
     shortfall: u64,
     compressed_accounts: &[crate::light_token::types::CompressedTokenAccount],
     light_rpc: &LightRpcClient,
-    zk_rpc_url: &str,
-    lut_override: Option<&str>,
     decimals: u8,
 ) -> Result<TransferTransactionResponse, KoraError> {
     let (inputs, compressed_proof) =
         fetch_and_convert_proof(light_rpc, compressed_accounts, shortfall).await?;
 
     // Derive source ATA using Light Token derivation
-    let source_ata = kora_light_client::get_associated_token_address(source, mint);
+    let source_ata = kora_light_client::get_associated_token_address(ctx.source, ctx.mint);
 
     // Build decompress instruction (cold -> source Light Token ATA)
     let decompress_ix = kora_light_client::decompress::create_decompress_instruction(
-        fee_payer,
-        source,
-        mint,
+        ctx.fee_payer,
+        ctx.source,
+        ctx.mint,
         &inputs,
         &compressed_proof,
         &source_ata,
@@ -524,12 +511,12 @@ async fn mixed_transfer(
 
     // Build transfer instructions using Light Token program
     let mut transfer_instructions = build_light_token_transfer_instructions(
-        rpc_client,
-        fee_payer,
-        source,
-        destination,
-        mint,
-        amount,
+        ctx.rpc_client,
+        ctx.fee_payer,
+        ctx.source,
+        ctx.destination,
+        ctx.mint,
+        ctx.amount,
         decimals,
     )
     .await?;
@@ -538,15 +525,15 @@ async fn mixed_transfer(
     instructions.append(&mut transfer_instructions);
 
     let (mut transaction, blockhash) = build_light_token_v0_transaction(
-        rpc_client,
-        fee_payer,
+        ctx.rpc_client,
+        ctx.fee_payer,
         &instructions,
-        zk_rpc_url,
-        lut_override,
+        ctx.zk_rpc_url,
+        ctx.lut_override,
     )
     .await?;
 
-    sign_v0_and_build_response(signer, &mut transaction, fee_payer, blockhash).await
+    sign_v0_and_build_response(ctx.signer, &mut transaction, ctx.fee_payer, blockhash).await
 }
 
 #[cfg(test)]
@@ -708,5 +695,132 @@ mod tests {
             !error_msg.contains("zk_compression_rpc_url"),
             "light_token=false should not enter the Light Token path, but got: {error_msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_light_token_disallowed_source() {
+        let source = Pubkey::new_unique();
+        let config = ConfigMockBuilder::new()
+            .with_zk_compression_rpc_url(Some("https://zk.example.com".to_string()))
+            .with_disallowed_accounts(vec![source.to_string()])
+            .build();
+        update_config(config).unwrap();
+        let _ = setup_or_get_test_signer();
+
+        let rpc_client = Arc::new(RpcMockBuilder::new().with_mint_account(6).build());
+
+        let request = TransferTransactionRequest {
+            amount: 1000,
+            token: Pubkey::new_unique().to_string(),
+            source: source.to_string(),
+            destination: Pubkey::new_unique().to_string(),
+            signer_key: None,
+            light_token: true,
+        };
+
+        let result = transfer_transaction(&rpc_client, request).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KoraError::InvalidTransaction(msg) => {
+                assert!(msg.contains("disallowed"), "Expected disallowed error, got: {msg}");
+            }
+            other => panic!("Expected InvalidTransaction, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_light_token_disallowed_destination() {
+        let destination = Pubkey::new_unique();
+        let config = ConfigMockBuilder::new()
+            .with_zk_compression_rpc_url(Some("https://zk.example.com".to_string()))
+            .with_disallowed_accounts(vec![destination.to_string()])
+            .build();
+        update_config(config).unwrap();
+        let _ = setup_or_get_test_signer();
+
+        let rpc_client = Arc::new(RpcMockBuilder::new().with_mint_account(6).build());
+
+        let request = TransferTransactionRequest {
+            amount: 1000,
+            token: Pubkey::new_unique().to_string(),
+            source: Pubkey::new_unique().to_string(),
+            destination: destination.to_string(),
+            signer_key: None,
+            light_token: true,
+        };
+
+        let result = transfer_transaction(&rpc_client, request).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KoraError::InvalidTransaction(msg) => {
+                assert!(msg.contains("disallowed"), "Expected disallowed error, got: {msg}");
+            }
+            other => panic!("Expected InvalidTransaction, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_light_token_mint_not_in_allowlist() {
+        let config = ConfigMockBuilder::new()
+            .with_zk_compression_rpc_url(Some("https://zk.example.com".to_string()))
+            .with_allowed_tokens(vec![]) // empty allowlist
+            .build();
+        update_config(config).unwrap();
+        let _ = setup_or_get_test_signer();
+
+        let rpc_client = Arc::new(RpcMockBuilder::new().with_mint_account(6).build());
+
+        let request = TransferTransactionRequest {
+            amount: 1000,
+            token: Pubkey::new_unique().to_string(),
+            source: Pubkey::new_unique().to_string(),
+            destination: Pubkey::new_unique().to_string(),
+            signer_key: None,
+            light_token: true,
+        };
+
+        let result = transfer_transaction(&rpc_client, request).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KoraError::InvalidTransaction(msg) => {
+                assert!(
+                    msg.contains("not in the allowed token list"),
+                    "Expected allowlist error, got: {msg}"
+                );
+            }
+            other => panic!("Expected InvalidTransaction, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_light_token_amount_exceeds_max() {
+        let mint = Pubkey::new_unique();
+        let config = ConfigMockBuilder::new()
+            .with_zk_compression_rpc_url(Some("https://zk.example.com".to_string()))
+            .with_allowed_tokens(vec![mint.to_string()])
+            .with_max_allowed_lamports(500) // low cap
+            .build();
+        update_config(config).unwrap();
+        let _ = setup_or_get_test_signer();
+
+        let rpc_client = Arc::new(RpcMockBuilder::new().with_mint_account(6).build());
+
+        let request = TransferTransactionRequest {
+            amount: 1000, // exceeds 500 cap
+            token: mint.to_string(),
+            source: Pubkey::new_unique().to_string(),
+            destination: Pubkey::new_unique().to_string(),
+            signer_key: None,
+            light_token: true,
+        };
+
+        let result = transfer_transaction(&rpc_client, request).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            KoraError::InvalidTransaction(msg) => {
+                assert!(msg.contains("exceeds maximum"), "Expected max lamports error, got: {msg}");
+            }
+            other => panic!("Expected InvalidTransaction, got {other:?}"),
+        }
     }
 }

@@ -388,6 +388,10 @@ impl TransactionValidator {
         self.disallowed_accounts.contains(account)
     }
 
+    pub fn is_allowed_token(&self, mint: &Pubkey) -> bool {
+        self.allowed_tokens.contains(mint)
+    }
+
     async fn calculate_total_outflow(
         &self,
         transaction_resolved: &mut VersionedTransactionResolved,

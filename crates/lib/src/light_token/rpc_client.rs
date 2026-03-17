@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use solana_sdk::pubkey::Pubkey;
 
 use crate::error::KoraError;
@@ -6,6 +8,9 @@ use super::types::{
     CompressedTokenAccount, HashWithTree, ItemsWithCursor, JsonRpcResponse, RpcResult,
     ValidityProofResponse,
 };
+
+/// Shared HTTP client for connection pooling across all LightRpcClient instances.
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 /// HTTP JSON-RPC client for ZK compression methods.
 ///
@@ -19,7 +24,7 @@ pub struct LightRpcClient {
 impl LightRpcClient {
     /// Create a new LightRpcClient targeting the given ZK compression RPC endpoint
     pub fn new(endpoint: &str) -> Self {
-        Self { client: reqwest::Client::new(), endpoint: endpoint.to_string() }
+        Self { client: HTTP_CLIENT.clone(), endpoint: endpoint.to_string() }
     }
 
     /// Fetch compressed token accounts owned by `owner` for the given `mint`

@@ -19,7 +19,10 @@ pub fn extract_hashes_with_tree(accounts: &[CompressedTokenAccount]) -> Vec<Hash
         .map(|acct| HashWithTree {
             hash: acct.account.hash.clone(),
             tree: acct.account.tree.clone(),
-            queue: acct.account.tree.clone(), // queue not in getCompressedTokenAccountsByOwner
+            // queue is not returned by getCompressedTokenAccountsByOwner; use tree as
+            // placeholder. In to_inputs(), the actual queue comes from the validity proof
+            // response's merkle_context — this fallback is only used if hash matching fails.
+            queue: acct.account.tree.clone(),
         })
         .collect()
 }
@@ -142,11 +145,6 @@ pub fn to_proof(proof: &ValidityProofResponse) -> Result<LightCompressedProof, K
     }
 }
 
-/// Extract root indices from V2 proof response.
-pub fn root_indices(proof: &ValidityProofResponse) -> Vec<u16> {
-    proof.accounts.iter().map(|a| a.root_index.root_index as u16).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +263,10 @@ mod tests {
             ValidityProofResponse { compressed_proof: None, accounts: vec![], addresses: vec![] };
         let proof = to_proof(&proof_resp).unwrap();
         assert_eq!(proof.a, [0u8; 32]);
+    }
+
+    fn root_indices(proof: &ValidityProofResponse) -> Vec<u16> {
+        proof.accounts.iter().map(|a| a.root_index.root_index as u16).collect()
     }
 
     #[test]

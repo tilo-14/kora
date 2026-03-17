@@ -36,3 +36,6 @@ docs/api-reference-generated/
 
 # Internal planning docs
 add-light/
+
+# Example lockfiles (reduce diff noise)
+examples/**/pnpm-lock.yaml

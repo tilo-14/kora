@@ -47,6 +47,7 @@ pub async fn build_light_token_v0_transaction(
         })?,
         None => detect_lut_address(rpc_url),
     };
+    log::info!("Light Token: using LUT address {lut_address}");
 
     // Fetch the lookup table account
     let lut_account =
