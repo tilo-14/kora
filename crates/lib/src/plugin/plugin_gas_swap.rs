@@ -2,17 +2,17 @@ use async_trait::async_trait;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_message::compiled_instruction::CompiledInstruction;
 use solana_sdk::pubkey::Pubkey;
-use solana_system_interface::{instruction::SystemInstruction, program::ID as SYSTEM_PROGRAM_ID};
-use spl_token_2022_interface::{
-    instruction::TokenInstruction as Token2022Instruction, ID as TOKEN_2022_PROGRAM_ID,
-};
-use spl_token_interface::{
-    instruction::TokenInstruction as SplTokenInstruction, ID as SPL_TOKEN_PROGRAM_ID,
-};
+use solana_system_interface::program::ID as SYSTEM_PROGRAM_ID;
+use spl_token_2022_interface::ID as TOKEN_2022_PROGRAM_ID;
+use spl_token_interface::ID as SPL_TOKEN_PROGRAM_ID;
 
 use crate::{
-    config::Config, constant::instruction_indexes, error::KoraError,
-    transaction::VersionedTransactionResolved,
+    config::Config,
+    error::KoraError,
+    transaction::{
+        ParsedSPLInstructionData, ParsedSPLInstructionType, ParsedSystemInstructionData,
+        ParsedSystemInstructionType, VersionedTransactionResolved,
+    },
 };
 
 use super::{PluginExecutionContext, TransactionPlugin};
@@ -20,7 +20,7 @@ use super::{PluginExecutionContext, TransactionPlugin};
 pub(super) struct GasSwapPlugin;
 
 impl GasSwapPlugin {
-    fn require_program_id(
+    fn outer_instruction_program_id(
         instruction: &CompiledInstruction,
         all_account_keys: &[Pubkey],
         context: PluginExecutionContext,
@@ -34,96 +34,107 @@ impl GasSwapPlugin {
         })
     }
 
-    fn require_account_pubkey(
-        instruction: &CompiledInstruction,
-        all_account_keys: &[Pubkey],
-        index: usize,
-        field: &str,
+    fn validate_outer_program_shape(
+        transaction: &VersionedTransactionResolved,
         context: PluginExecutionContext,
-    ) -> Result<Pubkey, KoraError> {
-        let key_index = instruction.accounts.get(index).copied().ok_or_else(|| {
-            KoraError::InvalidTransaction(format!(
-                "Plugin gas_swap missing account {} at index {} in {}",
-                field,
-                index,
-                context.method_name()
-            ))
-        })?;
+    ) -> Result<(), KoraError> {
+        let outer_instructions = transaction.message.instructions();
+        let all_account_keys = &transaction.all_account_keys;
 
-        all_account_keys.get(key_index as usize).copied().ok_or_else(|| {
-            KoraError::InvalidTransaction(format!(
-                "Plugin gas_swap missing account {} pubkey at key index {} in {}",
-                field,
-                key_index,
+        if outer_instructions.len() != 2 {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires exactly two outer instructions (1 System + 1 SPL/Token2022 transfer), found {} in {}",
+                outer_instructions.len(),
                 context.method_name()
-            ))
-        })
+            )));
+        }
+
+        let mut outer_system_count = 0usize;
+        let mut outer_token_count = 0usize;
+
+        for instruction in outer_instructions {
+            let program_id =
+                Self::outer_instruction_program_id(instruction, all_account_keys, context)?;
+            if program_id == SYSTEM_PROGRAM_ID {
+                outer_system_count += 1;
+            } else if program_id == SPL_TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID {
+                outer_token_count += 1;
+            } else {
+                return Err(KoraError::InvalidTransaction(format!(
+                    "Plugin gas_swap rejected outer program {} in {}. Only System and SPL/Token2022 transfer instructions are allowed.",
+                    program_id,
+                    context.method_name()
+                )));
+            }
+        }
+
+        if outer_system_count != 1 {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires exactly one outer System instruction, found {} in {}",
+                outer_system_count,
+                context.method_name()
+            )));
+        }
+
+        if outer_token_count != 1 {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires exactly one outer SPL/Token2022 instruction, found {} in {}",
+                outer_token_count,
+                context.method_name()
+            )));
+        }
+
+        Ok(())
     }
 
-    fn validate_outer_system_instruction(
-        instruction: &CompiledInstruction,
-        all_account_keys: &[Pubkey],
+    fn validate_parsed_system_transfer(
+        transaction: &mut VersionedTransactionResolved,
         fee_payer: &Pubkey,
         context: PluginExecutionContext,
     ) -> Result<(), KoraError> {
-        let system_ix =
-            bincode::deserialize::<SystemInstruction>(&instruction.data).map_err(|e| {
+        let system_instructions = transaction.get_or_parse_system_instructions()?;
+
+        if system_instructions.len() != 1
+            || !system_instructions.contains_key(&ParsedSystemInstructionType::SystemTransfer)
+        {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires only SystemTransfer instruction type in {}",
+                context.method_name()
+            )));
+        }
+
+        let transfers = system_instructions
+            .get(&ParsedSystemInstructionType::SystemTransfer)
+            .ok_or_else(|| {
                 KoraError::InvalidTransaction(format!(
-                    "Plugin gas_swap failed to decode system instruction in {}: {}",
-                    context.method_name(),
-                    e
+                    "Plugin gas_swap requires exactly one SystemTransfer in {}",
+                    context.method_name()
                 ))
             })?;
 
-        match system_ix {
-            SystemInstruction::Transfer { lamports } => Self::validate_fee_payer_sol_sender(
-                instruction,
-                all_account_keys,
-                instruction_indexes::system_transfer::SENDER_INDEX,
-                lamports,
-                fee_payer,
-                context,
-            ),
-            SystemInstruction::TransferWithSeed { lamports, .. } => {
-                Self::validate_fee_payer_sol_sender(
-                    instruction,
-                    all_account_keys,
-                    instruction_indexes::system_transfer_with_seed::SENDER_INDEX,
-                    lamports,
-                    fee_payer,
-                    context,
-                )
-            }
-            other => Err(KoraError::InvalidTransaction(format!(
-                "Plugin gas_swap rejected system instruction {:?} in {}",
-                other,
+        if transfers.len() != 1 {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires exactly one SystemTransfer, found {} in {}",
+                transfers.len(),
                 context.method_name()
-            ))),
+            )));
         }
-    }
 
-    fn validate_fee_payer_sol_sender(
-        instruction: &CompiledInstruction,
-        all_account_keys: &[Pubkey],
-        sender_index: usize,
-        lamports: u64,
-        fee_payer: &Pubkey,
-        context: PluginExecutionContext,
-    ) -> Result<(), KoraError> {
-        if lamports == 0 {
+        let ParsedSystemInstructionData::SystemTransfer { lamports, sender, .. } = &transfers[0]
+        else {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires parsed SystemTransfer in {}",
+                context.method_name()
+            )));
+        };
+
+        if *lamports == 0 {
             return Err(KoraError::InvalidTransaction(
                 "Plugin gas_swap requires non-zero SOL transfer".to_string(),
             ));
         }
 
-        let sender = Self::require_account_pubkey(
-            instruction,
-            all_account_keys,
-            sender_index,
-            "sender",
-            context,
-        )?;
-        if sender != *fee_payer {
+        if *sender != *fee_payer {
             return Err(KoraError::InvalidTransaction(format!(
                 "Plugin gas_swap requires fee payer {} to be SOL transfer sender, got {}",
                 fee_payer, sender
@@ -133,82 +144,52 @@ impl GasSwapPlugin {
         Ok(())
     }
 
-    fn validate_outer_token_instruction(
-        program_id: &Pubkey,
-        instruction: &CompiledInstruction,
-        all_account_keys: &[Pubkey],
+    fn validate_parsed_token_transfer(
+        transaction: &mut VersionedTransactionResolved,
         fee_payer: &Pubkey,
         context: PluginExecutionContext,
     ) -> Result<(), KoraError> {
-        let (owner_index, amount) = if *program_id == SPL_TOKEN_PROGRAM_ID {
-            match SplTokenInstruction::unpack(&instruction.data).map_err(|e| {
-                KoraError::InvalidTransaction(format!(
-                    "Plugin gas_swap failed to decode SPL token instruction in {}: {}",
-                    context.method_name(),
-                    e
-                ))
-            })? {
-                SplTokenInstruction::Transfer { amount } => {
-                    (instruction_indexes::spl_token_transfer::OWNER_INDEX, amount)
-                }
-                SplTokenInstruction::TransferChecked { amount, .. } => {
-                    (instruction_indexes::spl_token_transfer_checked::OWNER_INDEX, amount)
-                }
-                other => {
-                    return Err(KoraError::InvalidTransaction(format!(
-                        "Plugin gas_swap rejected SPL instruction {:?} in {}",
-                        other,
-                        context.method_name()
-                    )));
-                }
-            }
-        } else if *program_id == TOKEN_2022_PROGRAM_ID {
-            #[allow(deprecated)]
-            match Token2022Instruction::unpack(&instruction.data).map_err(|e| {
-                KoraError::InvalidTransaction(format!(
-                    "Plugin gas_swap failed to decode Token2022 instruction in {}: {}",
-                    context.method_name(),
-                    e
-                ))
-            })? {
-                Token2022Instruction::Transfer { amount } => {
-                    (instruction_indexes::spl_token_transfer::OWNER_INDEX, amount)
-                }
-                Token2022Instruction::TransferChecked { amount, .. } => {
-                    (instruction_indexes::spl_token_transfer_checked::OWNER_INDEX, amount)
-                }
-                other => {
-                    return Err(KoraError::InvalidTransaction(format!(
-                        "Plugin gas_swap rejected Token2022 instruction {:?} in {}",
-                        other,
-                        context.method_name()
-                    )));
-                }
-            }
-        } else {
+        let spl_instructions = transaction.get_or_parse_spl_instructions()?;
+
+        if spl_instructions.len() != 1
+            || !spl_instructions.contains_key(&ParsedSPLInstructionType::SplTokenTransfer)
+        {
             return Err(KoraError::InvalidTransaction(format!(
-                "Plugin gas_swap only supports token instructions from {} or {}, got {} in {}",
-                SPL_TOKEN_PROGRAM_ID,
-                TOKEN_2022_PROGRAM_ID,
-                program_id,
+                "Plugin gas_swap requires only SplTokenTransfer instruction type in {}",
+                context.method_name()
+            )));
+        }
+
+        let transfers =
+            spl_instructions.get(&ParsedSPLInstructionType::SplTokenTransfer).ok_or_else(|| {
+                KoraError::InvalidTransaction(format!(
+                    "Plugin gas_swap requires exactly one SplTokenTransfer in {}",
+                    context.method_name()
+                ))
+            })?;
+
+        if transfers.len() != 1 {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires exactly one SplTokenTransfer, found {} in {}",
+                transfers.len(),
+                context.method_name()
+            )));
+        }
+
+        let ParsedSPLInstructionData::SplTokenTransfer { amount, owner, .. } = &transfers[0] else {
+            return Err(KoraError::InvalidTransaction(format!(
+                "Plugin gas_swap requires parsed SplTokenTransfer in {}",
                 context.method_name()
             )));
         };
 
-        if amount == 0 {
+        if *amount == 0 {
             return Err(KoraError::InvalidTransaction(
                 "Plugin gas_swap requires non-zero token transfer".to_string(),
             ));
         }
 
-        let owner = Self::require_account_pubkey(
-            instruction,
-            all_account_keys,
-            owner_index,
-            "owner",
-            context,
-        )?;
-        if owner == *fee_payer {
+        if *owner == *fee_payer {
             return Err(KoraError::InvalidTransaction(format!(
                 "Plugin gas_swap requires token payer to differ from fee payer {}",
                 fee_payer
@@ -221,10 +202,6 @@ impl GasSwapPlugin {
 
 #[async_trait]
 impl TransactionPlugin for GasSwapPlugin {
-    fn name(&self) -> &'static str {
-        "gas_swap"
-    }
-
     async fn validate(
         &self,
         transaction: &mut VersionedTransactionResolved,
@@ -233,58 +210,9 @@ impl TransactionPlugin for GasSwapPlugin {
         fee_payer: &Pubkey,
         context: PluginExecutionContext,
     ) -> Result<(), KoraError> {
-        let outer_instructions = transaction.message.instructions();
-        let all_account_keys = &transaction.all_account_keys;
-
-        let mut system_transfer_count = 0usize;
-        let mut token_transfer_count = 0usize;
-
-        for instruction in outer_instructions {
-            let program_id = Self::require_program_id(instruction, all_account_keys, context)?;
-
-            if program_id == SYSTEM_PROGRAM_ID {
-                Self::validate_outer_system_instruction(
-                    instruction,
-                    all_account_keys,
-                    fee_payer,
-                    context,
-                )?;
-                system_transfer_count += 1;
-            } else if program_id == SPL_TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID {
-                Self::validate_outer_token_instruction(
-                    &program_id,
-                    instruction,
-                    all_account_keys,
-                    fee_payer,
-                    context,
-                )?;
-                token_transfer_count += 1;
-            } else {
-                return Err(KoraError::InvalidTransaction(format!(
-                    "Plugin {} rejected outer program {} in {}. Only System transfer and SPL transfer instructions are allowed.",
-                    self.name(),
-                    program_id,
-                    context.method_name()
-                )));
-            }
-        }
-
-        if system_transfer_count != 1 {
-            return Err(KoraError::InvalidTransaction(format!(
-                "Plugin {} requires exactly one top-level SOL transfer from fee payer, found {}",
-                self.name(),
-                system_transfer_count
-            )));
-        }
-
-        if token_transfer_count != 1 {
-            return Err(KoraError::InvalidTransaction(format!(
-                "Plugin {} requires exactly one top-level SPL token transfer, found {}",
-                self.name(),
-                token_transfer_count
-            )));
-        }
-
+        Self::validate_outer_program_shape(transaction, context)?;
+        Self::validate_parsed_system_transfer(transaction, fee_payer, context)?;
+        Self::validate_parsed_token_transfer(transaction, fee_payer, context)?;
         Ok(())
     }
 }

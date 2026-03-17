@@ -34,8 +34,6 @@ impl PluginExecutionContext {
 
 #[async_trait]
 trait TransactionPlugin: Send + Sync {
-    fn name(&self) -> &'static str;
-
     async fn validate(
         &self,
         transaction: &mut VersionedTransactionResolved,
