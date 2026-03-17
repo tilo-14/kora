@@ -2661,6 +2661,7 @@ dependencies = [
  "hyper 1.6.0",
  "jsonrpsee",
  "jsonrpsee-core",
+ "kora-light-client",
  "log",
  "mockall",
  "mockito",
@@ -2705,6 +2706,18 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "vaultrs",
+]
+
+[[package]]
+name = "kora-light-client"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "solana-compute-budget-interface",
+ "solana-instruction",
+ "solana-pubkey",
+ "solana-system-interface",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

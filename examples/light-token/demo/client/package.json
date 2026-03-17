@@ -1,0 +1,44 @@
+{
+  "name": "kora-light-token-demo-client",
+  "version": "1.0.0",
+  "description": "Gasless Light Token (compressed token) transfers via Kora paymaster",
+  "scripts": {
+    "start": "tsx src/quick-start.ts",
+    "full-demo": "tsx src/full-demo.ts",
+    "init-env": "tsx src/setup.ts",
+    "devnet-setup": "tsx src/devnet-setup.ts",
+    "test-transfer": "tsx src/test-server-transfer.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "solana",
+    "kora",
+    "light-protocol",
+    "compressed-token",
+    "zk-compression"
+  ],
+  "author": "Solana Foundation",
+  "license": "MIT",
+  "packageManager": "pnpm@10.12.3",
+  "dependencies": {
+    "@lightprotocol/compressed-token": "0.23.0-beta.10",
+    "@lightprotocol/stateless.js": "0.23.0-beta.10",
+    "@solana-program/compute-budget": "^0.13.0",
+    "@solana-program/memo": "^0.11.0",
+    "@solana-program/system": "^0.11.0",
+    "@solana-program/token": "^0.10.0",
+    "@solana/assertions": "^6.0.0",
+    "@solana/kit": "^6.0.0",
+    "@solana/kora": "link:../../../../sdks/ts",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/transaction-confirmation": "^6.0.0",
+    "@solana/web3.js": "^1.98.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3"
+  }
+}

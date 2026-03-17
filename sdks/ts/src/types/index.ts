@@ -12,6 +12,8 @@ export interface TransferTransactionRequest {
     amount: number;
     /** Public key of the destination wallet (not token account) */
     destination: string;
+    /** Use Light Token (compressed token) transfer instead of SPL. Requires zk_compression_rpc_url on server. */
+    light_token?: boolean;
     /** Optional signer address for the transaction */
     signer_key?: string;
     /** Public key of the source wallet (not token account) */
@@ -352,6 +354,8 @@ export interface Token2022InstructionPolicy {
  * Policy controlling what actions the fee payer can perform.
  */
 export interface FeePayerPolicy {
+    /** Programs explicitly allowed to use the fee payer as a writable account */
+    allow_fee_payer_writable_in_programs?: string[];
     /** SPL Token program instruction policies */
     spl_token: SplTokenInstructionPolicy;
     /** System program instruction policies */

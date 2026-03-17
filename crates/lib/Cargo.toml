@@ -85,6 +85,7 @@ regex = "1.11.1"
 subtle = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
+kora-light-client = { path = "../../../light-protocol/kora-light-client" }
 
 [features]
 default = []

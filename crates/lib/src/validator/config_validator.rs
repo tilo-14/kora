@@ -241,6 +241,14 @@ impl ConfigValidator {
             }
         }
 
+        if let Some(url) = &config.kora.zk_compression_rpc_url {
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                return Err(KoraError::InternalServerError(format!(
+                    "Invalid zk_compression_rpc_url: must start with http:// or https://, got: {url}"
+                )));
+            }
+        }
+
         Ok(())
     }
 
@@ -278,6 +286,20 @@ impl ConfigValidator {
         if let Some(payment_address) = &config.kora.payment_address {
             if let Err(e) = Pubkey::from_str(payment_address) {
                 errors.push(format!("Invalid payment address: {e}"));
+            }
+        }
+
+        // Validate zk_compression_rpc_url
+        if let Some(url) = &config.kora.zk_compression_rpc_url {
+            if !url.starts_with("http://") && !url.starts_with("https://") {
+                errors.push(format!(
+                    "Invalid zk_compression_rpc_url: must start with http:// or https://, got: {url}"
+                ));
+            } else {
+                warnings.push(
+                    "zk_compression_rpc_url is configured. Compressed token operations via Light Protocol are enabled."
+                        .to_string(),
+                );
             }
         }
 
@@ -769,6 +791,8 @@ mod tests {
                 payment_address: None,
                 cache: CacheConfig::default(),
                 usage_limit: UsageLimitConfig::default(),
+                zk_compression_rpc_url: None,
+                light_lut_address: None,
             },
             metrics: MetricsConfig::default(),
         };
@@ -1520,6 +1544,7 @@ mod tests {
                         allow_freeze_account: true,
                         allow_thaw_account: true,
                     },
+                    allow_fee_payer_writable_in_programs: vec![],
                 },
                 price: PriceConfig { model: PriceModel::Free },
                 token_2022: Token2022Config::default(),
@@ -1873,5 +1898,156 @@ mod tests {
         let errors = result.unwrap_err();
         assert!(errors.iter().any(|e| e.contains("JUPITER_API_KEY")));
         assert!(errors.iter().any(|e| e.contains("price_source = Jupiter")));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_zk_compression_rpc_url_valid() {
+        let config = Config {
+            validation: ValidationConfig {
+                max_allowed_lamports: 1_000_000,
+                max_signatures: 10,
+                allowed_programs: vec![
+                    SYSTEM_PROGRAM_ID.to_string(),
+                    SPL_TOKEN_PROGRAM_ID.to_string(),
+                ],
+                allowed_tokens: vec!["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string()],
+                allowed_spl_paid_tokens: SplTokenConfig::Allowlist(vec![
+                    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string(),
+                ]),
+                disallowed_accounts: vec![],
+                price_source: PriceSource::Mock,
+                fee_payer_policy: FeePayerPolicy::default(),
+                price: PriceConfig::default(),
+                token_2022: Token2022Config::default(),
+                allow_durable_transactions: false,
+            },
+            kora: KoraConfig {
+                zk_compression_rpc_url: Some("https://zk-compression.example.com".to_string()),
+                ..KoraConfig::default()
+            },
+            metrics: MetricsConfig::default(),
+        };
+
+        let _ = update_config(config);
+
+        let rpc_client = RpcMockBuilder::new().build();
+        let result = ConfigValidator::validate_with_result(&rpc_client, true).await;
+        assert!(result.is_ok());
+        let warnings = result.unwrap();
+        assert!(warnings.iter().any(|w| w.contains("zk_compression_rpc_url is configured")));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_zk_compression_rpc_url_invalid() {
+        let config = Config {
+            validation: ValidationConfig {
+                max_allowed_lamports: 1_000_000,
+                max_signatures: 10,
+                allowed_programs: vec![
+                    SYSTEM_PROGRAM_ID.to_string(),
+                    SPL_TOKEN_PROGRAM_ID.to_string(),
+                ],
+                allowed_tokens: vec!["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string()],
+                allowed_spl_paid_tokens: SplTokenConfig::Allowlist(vec![
+                    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string(),
+                ]),
+                disallowed_accounts: vec![],
+                price_source: PriceSource::Mock,
+                fee_payer_policy: FeePayerPolicy::default(),
+                price: PriceConfig::default(),
+                token_2022: Token2022Config::default(),
+                allow_durable_transactions: false,
+            },
+            kora: KoraConfig {
+                zk_compression_rpc_url: Some("ftp://invalid-url.example.com".to_string()),
+                ..KoraConfig::default()
+            },
+            metrics: MetricsConfig::default(),
+        };
+
+        let _ = update_config(config);
+
+        let rpc_client = RpcMockBuilder::new().build();
+        let result = ConfigValidator::validate_with_result(&rpc_client, true).await;
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| e.contains("Invalid zk_compression_rpc_url")));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_zk_compression_rpc_url_none() {
+        let config = Config {
+            validation: ValidationConfig {
+                max_allowed_lamports: 1_000_000,
+                max_signatures: 10,
+                allowed_programs: vec![
+                    SYSTEM_PROGRAM_ID.to_string(),
+                    SPL_TOKEN_PROGRAM_ID.to_string(),
+                ],
+                allowed_tokens: vec!["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string()],
+                allowed_spl_paid_tokens: SplTokenConfig::Allowlist(vec![
+                    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string(),
+                ]),
+                disallowed_accounts: vec![],
+                price_source: PriceSource::Mock,
+                fee_payer_policy: FeePayerPolicy::default(),
+                price: PriceConfig::default(),
+                token_2022: Token2022Config::default(),
+                allow_durable_transactions: false,
+            },
+            kora: KoraConfig { zk_compression_rpc_url: None, ..KoraConfig::default() },
+            metrics: MetricsConfig::default(),
+        };
+
+        let _ = update_config(config);
+
+        let rpc_client = RpcMockBuilder::new().build();
+        let result = ConfigValidator::validate_with_result(&rpc_client, true).await;
+        assert!(result.is_ok());
+        let warnings = result.unwrap();
+        // Should NOT have zk_compression warning when URL is not configured
+        assert!(!warnings.iter().any(|w| w.contains("zk_compression_rpc_url")));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_validate_simple_zk_compression_rpc_url_invalid() {
+        let config = Config {
+            validation: ValidationConfig {
+                max_allowed_lamports: 1_000_000,
+                max_signatures: 10,
+                allowed_programs: vec![SYSTEM_PROGRAM_ID.to_string()],
+                allowed_tokens: vec!["4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string()],
+                allowed_spl_paid_tokens: SplTokenConfig::Allowlist(vec![
+                    "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string(),
+                ]),
+                disallowed_accounts: vec![],
+                price_source: PriceSource::Mock,
+                fee_payer_policy: FeePayerPolicy::default(),
+                price: PriceConfig::default(),
+                token_2022: Token2022Config::default(),
+                allow_durable_transactions: false,
+            },
+            kora: KoraConfig {
+                zk_compression_rpc_url: Some("not-a-url".to_string()),
+                ..KoraConfig::default()
+            },
+            metrics: MetricsConfig::default(),
+        };
+
+        let _ = update_config(config);
+
+        let rpc_client = RpcClient::new_with_commitment(
+            "http://localhost:8899".to_string(),
+            CommitmentConfig::confirmed(),
+        );
+        let result = ConfigValidator::validate(&rpc_client).await;
+        assert!(result.is_err());
+        assert!(
+            matches!(result.unwrap_err(), KoraError::InternalServerError(msg) if msg.contains("Invalid zk_compression_rpc_url"))
+        );
     }
 }

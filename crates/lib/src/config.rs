@@ -149,6 +149,12 @@ pub struct FeePayerPolicy {
     pub spl_token: SplTokenInstructionPolicy,
     #[serde(default)]
     pub token_2022: Token2022InstructionPolicy,
+    /// Programs explicitly allowed to use the fee payer as a writable account
+    /// in their instructions. By default, no programs are allowed (empty vec = deny all).
+    /// Only applies to programs NOT in {System, SPL Token, Token-2022},
+    /// which have their own fine-grained policy controls above.
+    #[serde(default)]
+    pub allow_fee_payer_writable_in_programs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
@@ -463,6 +469,14 @@ pub struct KoraConfig {
     pub cache: CacheConfig,
     #[serde(default)]
     pub usage_limit: UsageLimitConfig,
+    /// Optional ZK compression RPC URL for Light Protocol compressed token operations.
+    /// Required when using `light_token: true` in transferTransaction.
+    #[serde(default)]
+    pub zk_compression_rpc_url: Option<String>,
+    /// Optional Light Protocol lookup table address override.
+    /// Falls back to automatic detection based on the RPC URL if not set.
+    #[serde(default)]
+    pub light_lut_address: Option<String>,
 }
 
 impl Default for KoraConfig {
@@ -475,6 +489,8 @@ impl Default for KoraConfig {
             payment_address: None,
             cache: CacheConfig::default(),
             usage_limit: UsageLimitConfig::default(),
+            zk_compression_rpc_url: None,
+            light_lut_address: None,
         }
     }
 }

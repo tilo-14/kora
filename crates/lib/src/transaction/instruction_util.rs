@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use solana_message::compiled_instruction::CompiledInstruction;
+use solana_message::{compiled_instruction::CompiledInstruction, VersionedMessage};
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
@@ -342,6 +342,7 @@ impl IxUtils {
     pub fn uncompile_instructions(
         instructions: &[CompiledInstruction],
         account_keys: &[Pubkey],
+        message: &VersionedMessage,
     ) -> Result<Vec<Instruction>, KoraError> {
         instructions
             .iter()
@@ -354,8 +355,8 @@ impl IxUtils {
                     .map(|idx| {
                         Ok(AccountMeta {
                             pubkey: Self::get_account_key_required(account_keys, *idx as usize)?,
-                            is_signer: false,
-                            is_writable: true,
+                            is_signer: message.is_signer(*idx as usize),
+                            is_writable: message.is_maybe_writable(*idx as usize, None),
                         })
                     })
                     .collect();
@@ -2530,25 +2531,45 @@ mod tests {
 
     #[test]
     fn test_uncompile_instructions() {
+        use solana_sdk::message::Message;
+
         let program_id = Pubkey::new_unique();
         let account1 = Pubkey::new_unique();
         let account2 = Pubkey::new_unique();
 
-        let account_keys = vec![program_id, account1, account2];
-        let compiled_ix = CompiledInstruction {
-            program_id_index: 0,
-            accounts: vec![1, 2], // indices into account_keys
-            data: vec![1, 2, 3],
-        };
+        // Build a real legacy message so is_writable/is_signer are derived from the header
+        let instruction = solana_sdk::instruction::Instruction::new_with_bincode(
+            program_id,
+            &[1u8, 2, 3],
+            vec![
+                AccountMeta::new(account1, false),          // writable, not signer
+                AccountMeta::new_readonly(account2, false), // readonly, not signer
+            ],
+        );
+        let message = Message::new(&[instruction], Some(&account1));
+        let versioned_message = VersionedMessage::Legacy(message.clone());
 
-        let instructions = IxUtils::uncompile_instructions(&[compiled_ix], &account_keys).unwrap();
+        let account_keys = message.account_keys.clone();
+        let compiled_ix = &message.instructions[0];
+
+        let instructions = IxUtils::uncompile_instructions(
+            &[compiled_ix.clone()],
+            &account_keys,
+            &versioned_message,
+        )
+        .unwrap();
 
         assert_eq!(instructions.len(), 1);
         let uncompiled = &instructions[0];
         assert_eq!(uncompiled.program_id, program_id);
         assert_eq!(uncompiled.accounts.len(), 2);
-        assert_eq!(uncompiled.accounts[0].pubkey, account1);
-        assert_eq!(uncompiled.accounts[1].pubkey, account2);
+        // account1 is the fee payer (signer + writable)
+        // The instruction accounts reference account1 and account2
+        // Verify writability is preserved from the message header
+        let acct1_meta = uncompiled.accounts.iter().find(|a| a.pubkey == account1).unwrap();
+        assert!(acct1_meta.is_writable);
+        let acct2_meta = uncompiled.accounts.iter().find(|a| a.pubkey == account2).unwrap();
+        assert!(!acct2_meta.is_writable);
         assert_eq!(uncompiled.data, vec![1, 2, 3]);
     }
 

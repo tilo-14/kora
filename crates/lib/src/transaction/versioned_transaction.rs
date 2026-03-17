@@ -104,8 +104,11 @@ impl VersionedTransactionResolved {
         resolved.all_account_keys = all_account_keys.clone();
 
         // 2. Fetch all instructions
-        let outer_instructions =
-            IxUtils::uncompile_instructions(transaction.message.instructions(), &all_account_keys)?;
+        let outer_instructions = IxUtils::uncompile_instructions(
+            transaction.message.instructions(),
+            &all_account_keys,
+            &transaction.message,
+        )?;
 
         let inner_instructions = resolved.fetch_inner_instructions(rpc_client, sig_verify).await?;
 
@@ -125,6 +128,7 @@ impl VersionedTransactionResolved {
             all_instructions: IxUtils::uncompile_instructions(
                 transaction.message.instructions(),
                 transaction.message.static_account_keys(),
+                &transaction.message,
             )?,
             parsed_system_instructions: None,
             parsed_spl_instructions: None,
@@ -185,6 +189,7 @@ impl VersionedTransactionResolved {
             return IxUtils::uncompile_instructions(
                 &compiled_inner_instructions,
                 &self.all_account_keys,
+                &self.transaction.message,
             );
         }
 

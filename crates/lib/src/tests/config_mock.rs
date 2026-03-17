@@ -106,6 +106,8 @@ impl ConfigMockBuilder {
                         account_ttl: 60,
                     },
                     usage_limit: UsageLimitConfig::default(),
+                    zk_compression_rpc_url: None,
+                    light_lut_address: None,
                 },
                 metrics: MetricsConfig::default(),
             },
@@ -114,6 +116,11 @@ impl ConfigMockBuilder {
 
     pub fn build(self) -> Config {
         self.config
+    }
+
+    pub fn with_light_lut_address(mut self, address: Option<String>) -> Self {
+        self.config.kora.light_lut_address = address;
+        self
     }
 
     pub fn with_validation(mut self, validation: ValidationConfig) -> Self {
@@ -168,6 +175,11 @@ impl ConfigMockBuilder {
 
     pub fn with_payment_address(mut self, payment_address: Option<String>) -> Self {
         self.config.kora.payment_address = payment_address;
+        self
+    }
+
+    pub fn with_zk_compression_rpc_url(mut self, url: Option<String>) -> Self {
+        self.config.kora.zk_compression_rpc_url = url;
         self
     }
 
@@ -340,6 +352,8 @@ impl KoraConfigBuilder {
                     account_ttl: 60,
                 },
                 usage_limit: UsageLimitConfig::default(),
+                zk_compression_rpc_url: None,
+                light_lut_address: None,
             },
         }
     }
@@ -370,6 +384,16 @@ impl KoraConfigBuilder {
 
     pub fn with_cache(mut self, cache: CacheConfig) -> Self {
         self.config.cache = cache;
+        self
+    }
+
+    pub fn with_light_lut_address(mut self, address: Option<String>) -> Self {
+        self.config.light_lut_address = address;
+        self
+    }
+
+    pub fn with_zk_compression_rpc_url(mut self, url: Option<String>) -> Self {
+        self.config.zk_compression_rpc_url = url;
         self
     }
 }
@@ -578,6 +602,11 @@ impl FeePayerPolicyBuilder {
         self
     }
 
+    pub fn with_allow_fee_payer_writable_in_programs(mut self, programs: Vec<String>) -> Self {
+        self.config.allow_fee_payer_writable_in_programs = programs;
+        self
+    }
+
     pub fn restrictive() -> Self {
         Self {
             config: FeePayerPolicy {
@@ -621,6 +650,7 @@ impl FeePayerPolicyBuilder {
                     allow_initialize_account: false,
                     allow_initialize_multisig: false,
                 },
+                allow_fee_payer_writable_in_programs: vec![],
             },
         }
     }

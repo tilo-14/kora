@@ -12,6 +12,7 @@ use crate::{
 };
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{pubkey::Pubkey, transaction::VersionedTransaction};
+use solana_system_interface::program::ID as SYSTEM_PROGRAM_ID;
 use std::str::FromStr;
 
 use crate::fee::price::PriceModel;
@@ -26,6 +27,7 @@ pub struct TransactionValidator {
     _price_source: PriceSource,
     fee_payer_policy: FeePayerPolicy,
     allow_durable_transactions: bool,
+    allow_fee_payer_writable_in_programs: Vec<Pubkey>,
 }
 
 impl TransactionValidator {
@@ -71,6 +73,18 @@ impl TransactionValidator {
                 })?,
             fee_payer_policy: config.fee_payer_policy.clone(),
             allow_durable_transactions: config.allow_durable_transactions,
+            allow_fee_payer_writable_in_programs: config
+                .fee_payer_policy
+                .allow_fee_payer_writable_in_programs
+                .iter()
+                .map(|addr| {
+                    Pubkey::from_str(addr).map_err(|e| {
+                        KoraError::InternalServerError(format!(
+                            "Invalid program address in allow_fee_payer_writable_in_programs: {e}"
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<Pubkey>, KoraError>>()?,
         })
     }
 
@@ -287,6 +301,44 @@ impl TransactionValidator {
             self.fee_payer_policy.spl_token.allow_thaw_account,
             self.fee_payer_policy.token_2022.allow_thaw_account,
             "SPL Token ThawAccount", "Token2022 Token ThawAccount");
+
+        // Validate fee payer writable usage in programs not covered by the above parsers
+        self.validate_fee_payer_writable_in_unknown_programs(transaction_resolved)?;
+
+        Ok(())
+    }
+
+    /// Rejects transactions where the fee payer appears as a writable account
+    /// in instructions for programs outside {System, SPL Token, Token-2022}.
+    /// Those three programs have their own fine-grained policy controls above.
+    /// For all other programs, the fee payer must NOT be writable unless the
+    /// program is explicitly listed in `allow_fee_payer_writable_in_programs`.
+    fn validate_fee_payer_writable_in_unknown_programs(
+        &self,
+        transaction_resolved: &VersionedTransactionResolved,
+    ) -> Result<(), KoraError> {
+        let known_programs: [Pubkey; 3] =
+            [SYSTEM_PROGRAM_ID, spl_token_interface::ID, spl_token_2022_interface::ID];
+
+        for instruction in &transaction_resolved.all_instructions {
+            // Skip programs that have their own fine-grained parsers
+            if known_programs.contains(&instruction.program_id) {
+                continue;
+            }
+
+            for account_meta in &instruction.accounts {
+                if account_meta.pubkey == self.fee_payer_pubkey
+                    && account_meta.is_writable
+                    && !self.allow_fee_payer_writable_in_programs.contains(&instruction.program_id)
+                {
+                    return Err(KoraError::InvalidTransaction(format!(
+                        "Fee payer cannot be used as a writable account in program {}. \
+                         Add to 'allow_fee_payer_writable_in_programs' to permit.",
+                        instruction.program_id
+                    )));
+                }
+            }
+        }
 
         Ok(())
     }
