@@ -87,7 +87,7 @@ impl BundleProcessor {
         config: &Config,
         rpc_client: &Arc<RpcClient>,
         sig_verify: bool,
-        plugin_context: PluginExecutionContext,
+        plugin_context: Option<PluginExecutionContext>,
         processing_mode: BundleProcessingMode<'a>,
     ) -> Result<Self, KoraError> {
         let validator = TransactionValidator::new(config, fee_payer)?;
@@ -122,9 +122,11 @@ impl BundleProcessor {
             }
 
             validator.validate_transaction(config, &mut resolved_tx, rpc_client).await?;
-            plugin_runner
-                .run(&mut resolved_tx, config, rpc_client, &fee_payer, plugin_context)
-                .await?;
+            if let Some(context) = plugin_context {
+                plugin_runner
+                    .run(&mut resolved_tx, config, rpc_client, &fee_payer, context)
+                    .await?;
+            }
 
             let fee_calc = FeeConfigUtil::estimate_kora_fee(
                 &mut resolved_tx,

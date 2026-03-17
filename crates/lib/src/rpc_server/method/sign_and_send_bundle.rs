@@ -80,7 +80,7 @@ pub async fn sign_and_send_bundle(
         config,
         rpc_client,
         sig_verify,
-        PluginExecutionContext::SignAndSendBundle,
+        Some(PluginExecutionContext::SignAndSendBundle),
         BundleProcessingMode::CheckUsage(request.user_id.as_deref()),
     )
     .await?;

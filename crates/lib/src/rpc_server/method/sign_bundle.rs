@@ -78,7 +78,7 @@ pub async fn sign_bundle(
         config,
         rpc_client,
         sig_verify,
-        PluginExecutionContext::SignBundle,
+        Some(PluginExecutionContext::SignBundle),
         BundleProcessingMode::CheckUsage(request.user_id.as_deref()),
     )
     .await?;
