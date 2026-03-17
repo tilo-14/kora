@@ -19,15 +19,12 @@ impl GasSwapPlugin {
         transaction: &VersionedTransactionResolved,
         context: PluginExecutionContext,
     ) -> Result<(), KoraError> {
-        let outer_instruction_count = transaction.message.instructions().len();
         let total_instruction_count = transaction.all_instructions.len();
-        let inner_instruction_count =
-            total_instruction_count.saturating_sub(outer_instruction_count);
 
-        if outer_instruction_count + inner_instruction_count != 2 {
+        if total_instruction_count != 2 {
             return Err(KoraError::InvalidTransaction(format!(
                 "Plugin gas_swap requires exactly two total instructions (outer + inner), found {} in {}",
-                outer_instruction_count + inner_instruction_count,
+                total_instruction_count,
                 context.method_name()
             )));
         }
