@@ -24,11 +24,6 @@ get_payer_signer = true
 get_version = true
 sign_bundle = true
 sign_and_send_bundle = true
-swap_for_gas = true
-
-[kora.swap_for_gas]
-buffer_bps = 25
-max_lamports_out = 500000
 
 [validation]
 max_allowed_lamports = 1000000
@@ -118,6 +113,9 @@ enabled = false
 cache_url = "redis://redis:6379"
 fallback_if_unavailable = false
 rules = []
+
+[kora.plugins]
+enabled = []
 
 [kora.bundle]
 enabled = true

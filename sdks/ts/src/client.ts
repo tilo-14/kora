@@ -23,8 +23,6 @@ import {
     SignAndSendTransactionResponse,
     SignBundleRequest,
     SignBundleResponse,
-    SwapForGasRequest,
-    SwapForGasResponse,
     SignTransactionRequest,
     SignTransactionResponse,
 } from './types/index.js';
@@ -326,16 +324,6 @@ export class KoraClient {
      */
     async signAndSendBundle(request: SignAndSendBundleRequest): Promise<SignAndSendBundleResponse> {
         return await this.rpcRequest<SignAndSendBundleResponse, SignAndSendBundleRequest>('signAndSendBundle', request);
-    }
-
-    /**
-     * Builds and signs a gas-station style swap transaction that exchanges a fee token for SOL.
-     * @param request - swapForGas request parameters
-     * @returns Signed transaction plus quote metadata
-     * @throws {Error} When request validation or quoting fails
-     */
-    async swapForGas(request: SwapForGasRequest): Promise<SwapForGasResponse> {
-        return await this.rpcRequest<SwapForGasResponse, SwapForGasRequest>('swapForGas', request);
     }
 
     /**

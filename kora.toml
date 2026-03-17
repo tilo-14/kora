@@ -18,7 +18,7 @@ rate_limit = 100
 # recaptcha_score_threshold = 0.5
 
 # Optional: RPC methods that require reCAPTCHA verification
-# protected_methods = ["signTransaction", "signAndSendTransaction", "signBundle", "signAndSendBundle", "swapForGas"]
+# protected_methods = ["signTransaction", "signAndSendTransaction", "signBundle", "signAndSendBundle"]
 
 # Lighthouse fee payer protection - adds balance assertions to prevent fee payer drainage
 # IMPORTANT: Only works with signTransaction/signBundle flows, NOT signAndSendTransaction/signAndSendBundle
@@ -47,11 +47,6 @@ get_blockhash = true
 get_config = true
 get_payer_signer = true
 get_version = true
-swap_for_gas = false
-
-[kora.swap_for_gas]
-buffer_bps = 25
-max_lamports_out = 1000000
 
 [validation]
 max_allowed_lamports = 1000000
@@ -163,6 +158,11 @@ enabled = false
 cache_url = "redis://redis:6379"
 max_transactions = 2
 fallback_if_unavailable = false
+
+[kora.plugins]
+# Enabled transaction plugins for sign/signAndSend flows.
+# Available values: "gas_swap"
+enabled = []
 
 [kora.bundle]
 enabled = false

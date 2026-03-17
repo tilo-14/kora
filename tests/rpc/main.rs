@@ -14,7 +14,6 @@ mod bundles;
 mod compute_budget;
 mod durable_transactions;
 mod fee_estimation;
-mod swap_for_gas;
 mod transaction_signing;
 mod transfers;
 

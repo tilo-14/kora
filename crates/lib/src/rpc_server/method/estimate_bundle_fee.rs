@@ -2,6 +2,7 @@ use crate::{
     bundle::{BundleError, BundleProcessingMode, BundleProcessor, JitoError},
     error::KoraError,
     fee::fee::FeeConfigUtil,
+    plugin::PluginExecutionContext,
     rpc_server::middleware_utils::default_sig_verify,
     state::get_request_signer_with_signer_key,
     validator::bundle_validator::BundleValidator,
@@ -77,6 +78,7 @@ pub async fn estimate_bundle_fee(
         config,
         rpc_client,
         sig_verify,
+        PluginExecutionContext::SignBundle,
         BundleProcessingMode::SkipUsage,
     )
     .await?;
