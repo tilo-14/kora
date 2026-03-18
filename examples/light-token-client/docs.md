@@ -30,17 +30,16 @@ Fee payer policy is restricted to minimum required permissions:
 **`demo/client/src/quick-start.ts`** — Main transfer flow:
 
 1. `kora.getPayerSigner()` — get Kora's fee payer pubkey
-2. `getMint(connection, mint)` — get mint decimals (typed, no `any` cast)
-3. `getAssociatedTokenAddressInterface(mint, destination)` — derive destination Light Token ATA
-4. `createTransferInterfaceInstructions(rpc, koraFeePayer, mint, amount, sender, destinationAta, decimals)` — Light Protocol SDK builds transfer instructions client-side. Accepts `payer: PublicKey` (not `Signer`), so Kora's pubkey works directly. The SDK handles compressed account fetching, validity proof retrieval, and account selection internally.
-5. Prepend `createAtaInterfaceIdempotentInstruction(koraFeePayer, destinationAta, destination, mint, LIGHT_TOKEN_PROGRAM_ID)` to ensure destination ATA exists (no-op if already created)
-6. Loop through all instruction batches (each batch = one V0 transaction). Almost always one batch, but handles fragmented balances:
+2. `getAssociatedTokenAddressInterface(mint, destination)` — derive destination Light Token ATA
+3. `createTransferInterfaceInstructions(rpc, koraFeePayer, mint, amount, sender, destinationAta, decimals)` — Light Protocol SDK builds transfer instructions client-side. Accepts `payer: PublicKey` (not `Signer`), so Kora's pubkey works directly. The SDK handles compressed account fetching, validity proof retrieval, and account selection internally.
+4. Prepend `createAtaInterfaceIdempotentInstruction(koraFeePayer, destinationAta, destination, mint, LIGHT_TOKEN_PROGRAM_ID)` to ensure destination ATA exists (no-op if already created)
+5. Loop through all instruction batches (each batch = one V0 transaction). Almost always one batch, but handles fragmented balances:
    - `buildV0Transaction()` — compile V0 message (no lookup table needed; v3 packed-account layout fits in standard messages)
    - `tx.sign([sender])` — partial sign with sender keypair
    - `kora.signTransaction()` — Kora validates allowed programs + signs as fee payer
    - `connection.sendRawTransaction()` + `confirmTransaction()` — broadcast
 
-**`demo/client/src/helpers.ts`** — `buildV0Transaction()` utility. Compiles instructions into a `VersionedTransaction` with V0 message format.
+**`demo/client/src/helpers.ts`** — Shared utilities: `getEnvOrThrow()`, `keypairFromEnv()`, and `buildV0Transaction()`.
 
 **`demo/client/src/devnet-setup.ts`** — Provisions test state on devnet:
 - Creates SPL mint, registers with Light Token Program via `createSplInterface()`
@@ -56,7 +55,7 @@ Fee payer policy is restricted to minimum required permissions:
 @lightprotocol/compressed-token    0.23.0-beta.10   Transfer instructions, ATA creation
 @lightprotocol/stateless.js        0.23.0-beta.10   ZK compression RPC client
 @solana/kora                       link:../../../../sdks/ts   Kora RPC client
-@solana/spl-token                  ^0.4.14          getMint() for decimals
+@solana/spl-token                  ^0.4.14          SPL mint creation (createMint, mintTo, ATA helpers) in devnet-setup
 @solana/web3.js                    ^1.98.0          Connection, VersionedTransaction
 ```
 
@@ -107,7 +106,7 @@ Pattern follows the [Light Token integration guide](https://github.com/Lightprot
 
 ## V0 without lookup table
 
-Light Protocol v3 uses a packed-account layout in instruction data that reduces the number of unique accounts per instruction. V0 messages compile without an address lookup table. The `9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza` LUT referenced in `kora-light-client` does not exist on devnet and is not needed for v3 instructions.
+Light Protocol v3 uses a packed-account layout in instruction data that reduces the number of unique accounts per instruction. V0 messages compile without an address lookup table. The `9NYFyEqPeWQHiS8Jv4VjZcjKBMPRCJ3KbEbaBcy4Mza` LUT referenced in `kora-light-client` is not needed for v3 instructions, which use a packed-account layout that fits in standard V0 messages.
 
 ## Verified on devnet
 

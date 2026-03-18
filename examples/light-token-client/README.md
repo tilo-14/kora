@@ -1,8 +1,8 @@
 # Kora + Light Token (client-side)
 
-Kora handles fee sponsorship. You build transactions with light-token instructions client-side and Kora signs them as fee payer:
+Kora handles fee sponsorship. You build transactions with Light Token instructions client-side and Kora signs them as fee payer:
 
-1. Build light-token transfer instructions using `@lightprotocol/compressed-token`
+1. Build Light Token transfer instructions using `@lightprotocol/compressed-token`
 2. Assemble V0 transaction with Kora's fee payer address
 3. Sign with sender keypair
 4. Send to Kora for fee-payer co-signing
@@ -23,9 +23,10 @@ The client talks to ZK compression RPC directly.
 
 ### Source files
 
-- **[quick-start.ts](demo/client/src/quick-start.ts)** — Build a light-token transfer client-side, send to Kora for fee sponsorship. Handles multi-batch transfers.
-- **[helpers.ts](demo/client/src/helpers.ts)** — V0 transaction assembly utility.
+- **[quick-start.ts](demo/client/src/quick-start.ts)** — Build a Light Token transfer client-side, send to Kora for fee sponsorship. Handles multi-batch transfers.
+- **[helpers.ts](demo/client/src/helpers.ts)** — Shared utilities: env helpers, keypair loading, V0 transaction assembly.
 - **[devnet-setup.ts](demo/client/src/devnet-setup.ts)** — Create SPL mint, register with Light Token Program, wrap and compress tokens on devnet.
+- **[test-transfer.ts](demo/client/src/test-transfer.ts)** — E2E test covering hot, cold, and mixed transfer paths.
 
 ## Server configuration
 
@@ -94,6 +95,9 @@ pnpm start
 
 # 4. Transfer custom amount
 pnpm start 5000000
+
+# 5. Run E2E test (hot/cold/mixed paths)
+pnpm run test-transfer
 ```
 
 ### Notes

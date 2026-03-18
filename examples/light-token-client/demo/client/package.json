@@ -5,6 +5,7 @@
   "scripts": {
     "start": "tsx src/quick-start.ts",
     "devnet-setup": "tsx src/devnet-setup.ts",
+    "test-transfer": "tsx src/test-transfer.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
