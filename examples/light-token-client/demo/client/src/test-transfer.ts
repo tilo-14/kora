@@ -34,7 +34,7 @@ import {
 } from "@lightprotocol/compressed-token/unified";
 import dotenv from "dotenv";
 import path from "path";
-import { buildV0Transaction, getEnvOrThrow, keypairFromEnv } from "./helpers.js";
+import { buildV0Transaction, getEnvOrThrow, keypairFromEnv, LIGHT_TOKEN_PROGRAM_ID } from "./helpers.js";
 
 dotenv.config({ path: path.join(process.cwd(), "..", ".env") });
 
@@ -42,9 +42,6 @@ const KORA_RPC_URL = process.env.KORA_RPC_URL || "http://localhost:8081/";
 const ZK_RPC_URL = getEnvOrThrow("ZK_COMPRESSION_RPC_URL");
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL || ZK_RPC_URL;
 
-const LIGHT_TOKEN_PROGRAM_ID = new PublicKey(
-  "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m"
-);
 const DECIMALS = 6;
 
 const TRANSFER_CHECKED_DISCRIMINATOR = 12;
@@ -189,7 +186,7 @@ async function transferAndConfirm(
 
 async function main() {
   console.log("============================================");
-  console.log("  Client-Side Light-Token Transfer E2E Test");
+  console.log("  Client-Side Light Token Transfer E2E Test");
   console.log("  Tests: HOT, MIXED, COLD paths");
   console.log("============================================");
   console.log("\nKora RPC:", KORA_RPC_URL);

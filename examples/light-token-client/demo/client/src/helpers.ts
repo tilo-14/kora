@@ -20,6 +20,10 @@ export function keypairFromEnv(key: string): Keypair {
   return Keypair.fromSecretKey(bs58.decode(getEnvOrThrow(key)));
 }
 
+export const LIGHT_TOKEN_PROGRAM_ID = new PublicKey(
+  "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",
+);
+
 /**
  * Build a V0 versioned transaction from Light Token instructions.
  * Returns unsigned — caller must sign then send to Kora for co-signing.

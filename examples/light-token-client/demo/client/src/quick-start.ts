@@ -20,11 +20,7 @@ import {
 } from "@lightprotocol/compressed-token/unified";
 import dotenv from "dotenv";
 import path from "path";
-import { getEnvOrThrow, keypairFromEnv, buildV0Transaction } from "./helpers.js";
-
-const LIGHT_TOKEN_PROGRAM_ID = new PublicKey(
-  "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",
-);
+import { getEnvOrThrow, keypairFromEnv, buildV0Transaction, LIGHT_TOKEN_PROGRAM_ID } from "./helpers.js";
 
 dotenv.config({ path: path.join(process.cwd(), "..", ".env") });
 

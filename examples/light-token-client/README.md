@@ -45,8 +45,7 @@ No `zk_compression_rpc_url` or `light_lut_address` required on the server.
 
 ### Security notes
 
-On `main`, Kora does not enforce a writable-account guard for programs outside
-System/SPL Token/Token-2022. The `feat/light-token-transfer` branch adds
+> **Warning**: This example config is for devnet testing only. On `main`, Kora does not enforce a writable-account guard for programs outside System/SPL Token/Token-2022. The `feat/light-token-transfer` branch adds
 `allow_fee_payer_writable_in_programs` — cherry-pick it for production:
 
 ```toml
@@ -94,7 +93,7 @@ cd ../../.. && cargo run -p kora-cli --bin kora -- \
 pnpm start
 
 # 4. Transfer custom amount
-pnpm start 5000000
+TRANSFER_AMOUNT=5000000 pnpm start
 
 # 5. Run E2E test (hot/cold/mixed paths)
 pnpm run test-transfer
