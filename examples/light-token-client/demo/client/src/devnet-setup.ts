@@ -141,8 +141,8 @@ async function main(): Promise<void> {
       sender.publicKey,
     );
   } catch (e: any) {
-    // Only fall back to derived address if account already exists
-    if (e.message?.includes("already in use") || e.message?.includes("0x0")) {
+    // Fall back to derived address if account already exists or is owned by another program
+    if (e.message?.includes("already in use") || e.message?.includes("0x0") || e.message?.includes("owner is not allowed")) {
       senderSplAta = getAssociatedTokenAddressSync(mintAddress, sender.publicKey);
     } else {
       throw e;

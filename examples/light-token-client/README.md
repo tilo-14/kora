@@ -57,9 +57,10 @@ No `zk_compression_rpc_url` or `light_lut_address` required on the server.
    ]
    ```
 
-2. **Set fee payer policy** — enable only the two permissions Light Token transactions require:
+2. **Set fee payer policy** — enable only the three permissions Light Token transactions require:
    ```toml
    [validation.fee_payer_policy.system]
+   allow_transfer = true          # rent top-ups for Light Token accounts
    allow_create_account = true    # ATA creation
 
    [validation.fee_payer_policy.spl_token]

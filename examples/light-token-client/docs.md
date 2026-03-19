@@ -19,6 +19,7 @@ compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq   Account Compression Program
 No `zk_compression_rpc_url` or `light_lut_address` — the server does not call ZK compression RPC.
 
 Fee payer policy is restricted to minimum required permissions:
+- `system.allow_transfer = true` — needed for Light Token rent top-ups
 - `system.allow_create_account = true` — needed for ATA creation
 - `spl_token.allow_initialize_account = true` — needed for ATA initialization
 - All other permissions set to `false`

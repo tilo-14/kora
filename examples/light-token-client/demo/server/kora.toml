@@ -50,7 +50,7 @@ disallowed_accounts = []
 [validation.fee_payer_policy]
 
 [validation.fee_payer_policy.system]
-allow_transfer = false
+allow_transfer = true             # needed for Light Token rent top-ups
 allow_assign = false
 allow_create_account = true    # needed for ATA creation
 allow_allocate = false
