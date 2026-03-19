@@ -8,7 +8,6 @@
     "batch-transfer": "tsx src/batch-transfer.ts",
     "payment-with-memo": "tsx src/payment-with-memo.ts",
     "devnet-setup": "tsx src/devnet-setup.ts",
-    "test-transfer": "tsx tests/transfer.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

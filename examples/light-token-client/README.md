@@ -28,7 +28,7 @@ The client talks to ZK compression RPC directly.
 - **[payment-with-memo.ts](demo/client/src/payment-with-memo.ts)** — Attach an invoice ID via Memo program.
 - **[helpers.ts](demo/client/src/helpers.ts)** — Shared utilities: env helpers, keypair loading, V0 transaction assembly.
 - **[devnet-setup.ts](demo/client/src/devnet-setup.ts)** — Create SPL mint, register with Light Token Program, wrap and compress tokens on devnet.
-- **[transfer.test.ts](demo/client/tests/transfer.test.ts)** — E2E test covering hot, cold, and mixed transfer paths.
+
 
 ## Server configuration
 
@@ -113,9 +113,6 @@ pnpm run batch-transfer
 
 # 5. Transfer with memo
 pnpm run payment-with-memo
-
-# 6. Run E2E test (hot/cold/mixed paths)
-pnpm run test-transfer
 ```
 
 ### Notes
