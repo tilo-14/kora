@@ -27,7 +27,7 @@ Fee payer policy is restricted to minimum required permissions:
 
 ### Client code
 
-**`demo/client/src/quick-start.ts`** — Main transfer flow:
+**`demo/client/src/basic-transfer.ts`** — Main transfer flow:
 
 1. `kora.getPayerSigner()` — get Kora's fee payer pubkey
 2. `getAssociatedTokenAddressInterface(mint, destination)` — derive destination Light Token ATA

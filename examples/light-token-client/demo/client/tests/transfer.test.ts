@@ -26,15 +26,15 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 import { createRpc, Rpc } from "@lightprotocol/stateless.js";
-import { createTransferInterfaceInstructions } from "@lightprotocol/compressed-token";
 import {
   getAssociatedTokenAddressInterface,
   getAtaInterface,
   createAtaInterfaceIdempotentInstruction,
+  createTransferInterfaceInstructions,
 } from "@lightprotocol/compressed-token/unified";
 import dotenv from "dotenv";
 import path from "path";
-import { buildV0Transaction, getEnvOrThrow, keypairFromEnv, LIGHT_TOKEN_PROGRAM_ID } from "./helpers.js";
+import { buildV0Transaction, getEnvOrThrow, keypairFromEnv, LIGHT_TOKEN_PROGRAM_ID } from "../src/helpers.js";
 
 dotenv.config({ path: path.join(process.cwd(), "..", ".env") });
 
@@ -125,7 +125,6 @@ async function transferAndConfirm(
     amount,
     sender.publicKey,
     destinationAta,
-    DECIMALS
   );
 
   // Prepend idempotent ATA creation to the first batch

@@ -3,9 +3,12 @@
   "version": "1.0.0",
   "description": "Client-side Light Token transfer with Kora fee sponsorship (no server-side Light Protocol code)",
   "scripts": {
-    "start": "tsx src/quick-start.ts",
+    "start": "tsx src/basic-transfer.ts",
+    "basic-transfer": "tsx src/basic-transfer.ts",
+    "batch-transfer": "tsx src/batch-transfer.ts",
+    "payment-with-memo": "tsx src/payment-with-memo.ts",
     "devnet-setup": "tsx src/devnet-setup.ts",
-    "test-transfer": "tsx src/test-transfer.ts",
+    "test-transfer": "tsx tests/transfer.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

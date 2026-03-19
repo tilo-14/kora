@@ -23,10 +23,12 @@ The client talks to ZK compression RPC directly.
 
 ### Source files
 
-- **[quick-start.ts](demo/client/src/quick-start.ts)** — Build a Light Token transfer client-side, send to Kora for fee sponsorship. Handles multi-batch transfers.
+- **[basic-transfer.ts](demo/client/src/basic-transfer.ts)** — Single gasless transfer via Kora fee sponsorship.
+- **[batch-transfer.ts](demo/client/src/batch-transfer.ts)** — Pay multiple recipients in one transaction.
+- **[payment-with-memo.ts](demo/client/src/payment-with-memo.ts)** — Attach an invoice ID via Memo program.
 - **[helpers.ts](demo/client/src/helpers.ts)** — Shared utilities: env helpers, keypair loading, V0 transaction assembly.
 - **[devnet-setup.ts](demo/client/src/devnet-setup.ts)** — Create SPL mint, register with Light Token Program, wrap and compress tokens on devnet.
-- **[test-transfer.ts](demo/client/src/test-transfer.ts)** — E2E test covering hot, cold, and mixed transfer paths.
+- **[transfer.test.ts](demo/client/tests/transfer.test.ts)** — E2E test covering hot, cold, and mixed transfer paths.
 
 ## Server configuration
 
@@ -102,17 +104,21 @@ cd ../../.. && cargo run -p kora-cli --bin kora -- \
   --rpc-url "$SOLANA_RPC_URL" \
   rpc start --signers-config examples/light-token-client/demo/server/signers.toml --port 8081
 
-# 3. Transfer 1 token (default)
-pnpm start
+# 3. Single transfer (1 token default)
+pnpm run basic-transfer
 
-# 4. Transfer custom amount
-TRANSFER_AMOUNT=5000000 pnpm start
+# 4. Batch transfer (3 recipients)
+pnpm run batch-transfer
 
-# 5. Run E2E test (hot/cold/mixed paths)
+# 5. Transfer with memo
+pnpm run payment-with-memo
+
+# 6. Run E2E test (hot/cold/mixed paths)
 pnpm run test-transfer
 ```
 
 ### Notes
 
 - Validity proofs are slot-bounded. Submit transactions to Kora promptly after building.
-- `createTransferInterfaceInstructions` returns `TransactionInstruction[][]`. Each inner array is one transaction. Almost always returns just one. The example handles multi-batch automatically.
+- `createTransferInterfaceInstructions` returns `TransactionInstruction[][]`. Each inner array is one transaction. Almost always one batch. `basic-transfer` handles multi-batch automatically.
+- `TRANSFER_AMOUNT=5000000 pnpm run basic-transfer` to transfer a custom amount.

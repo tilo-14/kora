@@ -13,10 +13,10 @@
 import { KoraClient } from "@solana/kora";
 import { PublicKey, Connection, VersionedTransaction } from "@solana/web3.js";
 import { createRpc } from "@lightprotocol/stateless.js";
-import { createTransferInterfaceInstructions } from "@lightprotocol/compressed-token";
 import {
   getAssociatedTokenAddressInterface,
   createAtaInterfaceIdempotentInstruction,
+  createTransferInterfaceInstructions,
 } from "@lightprotocol/compressed-token/unified";
 import dotenv from "dotenv";
 import path from "path";
@@ -35,7 +35,6 @@ async function main(): Promise<void> {
   const sender = keypairFromEnv("TEST_SENDER_KEYPAIR");
   const destination = keypairFromEnv("DESTINATION_KEYPAIR");
   const mint = new PublicKey(getEnvOrThrow("LIGHT_TOKEN_MINT"));
-  const decimals = 6;
 
   console.log("Sender:", sender.publicKey.toBase58());
   console.log("Destination:", destination.publicKey.toBase58());
@@ -61,7 +60,6 @@ async function main(): Promise<void> {
     amount,
     sender.publicKey,
     destinationAta,
-    decimals,
   );
 
   // Ensure destination ATA exists (idempotent -- no-op if already created)
