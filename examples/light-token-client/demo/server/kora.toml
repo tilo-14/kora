@@ -33,7 +33,7 @@ allowed_programs = [
     "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",   # Memo Program
     "ComputeBudget111111111111111111111111111111",    # Compute Budget Program
 
-    # Light Protocol programs (required for compressed token transactions)
+    # Light Protocol programs (required for Light Token transactions)
     "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",   # Light Token Program
     "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",   # Light System Program
     "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq",   # Account Compression Program

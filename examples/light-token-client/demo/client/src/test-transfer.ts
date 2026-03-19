@@ -302,7 +302,7 @@ async function main() {
       const hasTransfer2 = discriminators.includes(TRANSFER2_DISCRIMINATOR);
 
       if (!hasTransferChecked) throw new Error("Missing TransferChecked (disc 12)");
-      if (!hasTransfer2) throw new Error("Missing Transfer2/decompress (disc 101) — mixed path should decompress cold into hot");
+      if (!hasTransfer2) throw new Error("Missing Transfer2 (disc 101) in mixed path");
 
       console.log("  PASS: Mixed path confirmed. Sig:", signature.slice(0, 30) + "...");
       results.push({ name: "MIXED", passed: true, signature });
@@ -346,7 +346,7 @@ async function main() {
       const hasTransfer2 = discriminators.includes(TRANSFER2_DISCRIMINATOR);
       const hasTransferChecked = discriminators.includes(TRANSFER_CHECKED_DISCRIMINATOR);
 
-      if (!hasTransfer2) throw new Error("Missing Transfer2 (disc 101) — cold path should use compressed transfer");
+      if (!hasTransfer2) throw new Error("Missing Transfer2 (disc 101) in cold path");
       if (hasTransferChecked) throw new Error("Unexpected TransferChecked in cold path");
 
       console.log("  PASS: Cold path confirmed. Sig:", signature.slice(0, 30) + "...");

@@ -43,10 +43,9 @@ allowed_programs = [
 
 No `zk_compression_rpc_url` or `light_lut_address` required on the server.
 
-### Security notes
+### Production configuration
 
-> **Warning**: This example config is for devnet testing only. On `main`, Kora does not enforce a writable-account guard for programs outside System/SPL Token/Token-2022. The `feat/light-token-transfer` branch adds
-`allow_fee_payer_writable_in_programs` — cherry-pick it for production:
+For production, restrict which programs can reference the fee payer as writable:
 
 ```toml
 [validation.fee_payer_policy]

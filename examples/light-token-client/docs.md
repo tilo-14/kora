@@ -8,7 +8,7 @@ The server requires config changes only — add Light Protocol programs to `allo
 
 ### Server configuration
 
-**`demo/server/kora.toml`** — Kora config with three Light Protocol programs added to `allowed_programs`:
+**`demo/server/kora.toml`** — Kora config with three Light Protocol programs added to `allowed_programs` (required for Light Token transactions):
 
 ```
 cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m   Light Token Program
@@ -84,11 +84,9 @@ When a client sends a V0 transaction to `signTransaction`:
 
 Light Token instructions pass step 3 because the three program IDs are in `allowed_programs`. Step 4 only checks System/SPL/Token-2022 instructions — Light Token instructions are not inspected beyond the program ID allowlist.
 
-## Security gap on `main`
+## Fee payer writable guard
 
-On `main`, Kora does not enforce `allow_fee_payer_writable_in_programs`. The fee payer can be referenced as writable in any allowlisted program's instructions without additional checks.
-
-The `feat/light-token-transfer` branch adds this guard. For production, cherry-pick it and configure:
+For production, configure `allow_fee_payer_writable_in_programs` to restrict which programs can reference the fee payer as writable:
 
 ```toml
 [validation.fee_payer_policy]
