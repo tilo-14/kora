@@ -85,7 +85,10 @@ async function main(): Promise<void> {
 
     const finalTx = VersionedTransaction.deserialize(Buffer.from(signed_transaction, "base64"));
     const signature = await connection.sendRawTransaction(finalTx.serialize());
-    await connection.confirmTransaction(signature, "confirmed");
+    const confirmation = await connection.confirmTransaction(signature, "confirmed");
+    if (confirmation.value.err) {
+      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
     console.log("Tx:", signature);
   }
 }

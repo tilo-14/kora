@@ -132,12 +132,21 @@ async function main(): Promise<void> {
   console.log("Mint:", mintAddress.toBase58());
 
   // 4. Create sender SPL ATA and mint tokens
-  const senderSplAta = await createAssociatedTokenAccount(
-    connection,
-    payer,
-    mintAddress,
-    sender.publicKey,
-  ).catch(() => getAssociatedTokenAddressSync(mintAddress, sender.publicKey));
+  let senderSplAta: PublicKey;
+  try {
+    senderSplAta = await createAssociatedTokenAccount(
+      connection,
+      payer,
+      mintAddress,
+      sender.publicKey,
+    );
+  } catch (e: any) {
+    if (e.message?.includes("already in use") || e.message?.includes("0x0")) {
+      senderSplAta = getAssociatedTokenAddressSync(mintAddress, sender.publicKey);
+    } else {
+      throw e;
+    }
+  }
 
   const totalSplAmount = HOT_MINT_AMOUNT + COLD_MINT_AMOUNT;
   await mintTo(

@@ -84,17 +84,14 @@ When a client sends a V0 transaction to `signTransaction`:
 
 Light Token instructions pass step 3 because the three program IDs are in `allowed_programs`. Step 4 only checks System/SPL/Token-2022 instructions — Light Token instructions are not inspected beyond the program ID allowlist.
 
-## Fee payer writable guard
+## Security model
 
-For production, configure `allow_fee_payer_writable_in_programs` to restrict which programs can reference the fee payer as writable:
+Kora validates Light Token transactions through two mechanisms:
 
-```toml
-[validation.fee_payer_policy]
-allow_fee_payer_writable_in_programs = [
-    "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",
-    "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",
-]
-```
+1. **Program allowlist** — every instruction's `program_id` is checked against `allowed_programs`. Only the three Light Protocol program IDs listed above pass.
+2. **Fee payer policy** — System and SPL Token instructions are checked against granular policy flags. The example config permits only `CreateAccount` and `InitializeAccount` (required for ATA creation).
+
+Light Token CPI outflows (~17,400 lamports for ATA creation, ~766 per write) are not inspected by Kora's `max_allowed_lamports` validator, which only tracks System/SPL/Token-2022 instruction outflows. Operators should set `max_allowed_lamports` high enough to cover these costs and monitor fee payer balance.
 
 ## Multi-batch handling
 

@@ -43,17 +43,31 @@ allowed_programs = [
 
 No `zk_compression_rpc_url` or `light_lut_address` required on the server.
 
-### Production configuration
+### What the Kora operator needs
 
-For production, restrict which programs can reference the fee payer as writable:
+1. **Add Light Protocol programs to `allowed_programs`** in `kora.toml`:
+   ```toml
+   allowed_programs = [
+       # ... existing programs ...
+       "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",  # Light Token Program
+       "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",  # Light System Program
+       "compr6CUsB5m2jS4Y3831ztGSTnDpnKJTKS95d64XVq",  # Account Compression Program
+   ]
+   ```
 
-```toml
-[validation.fee_payer_policy]
-allow_fee_payer_writable_in_programs = [
-    "cTokenmWW8bLPjZEBAUgYy3zKxQZW6VKi7bqNFEVv3m",
-    "SySTEM1eSU2p4BGQfQpimFEWWSC1XDFeun3Nqzz3rT7",
-]
-```
+2. **Set fee payer policy** — enable only the two permissions Light Token transactions require:
+   ```toml
+   [validation.fee_payer_policy.system]
+   allow_create_account = true    # ATA creation
+
+   [validation.fee_payer_policy.spl_token]
+   allow_initialize_account = true    # ATA initialization
+   ```
+   All other fee payer policy permissions should remain `false`.
+
+3. **Fund the fee payer** — each transfer costs ~6,000 lamports (transfer only) to ~23,000 lamports (with ATA creation). Light Token CPI outflows (~17,400 lamports for ATA creation, ~766 per write) are not tracked by `max_allowed_lamports`.
+
+4. **No Light Protocol SDKs or ZK compression RPC needed on the server** — the client talks to ZK compression RPC directly.
 
 ## Setup
 
