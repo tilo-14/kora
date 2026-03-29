@@ -21,10 +21,14 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   MicroLamports,
   appendTransactionMessageInstructions,
+  AccountRole,
 } from "@solana/kit";
 import { getAddMemoInstruction } from "@solana-program/memo";
 import { createRecentSignatureConfirmationPromiseFactory } from "@solana/transaction-confirmation";
 import { updateOrAppendSetComputeUnitLimitInstruction, updateOrAppendSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
+import { PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import { createRpc } from "@lightprotocol/stateless.js";
+import { createTransferInterfaceInstructions } from "@lightprotocol/compressed-token/unified";
 import dotenv from "dotenv";
 import path from "path";
 
@@ -33,10 +37,26 @@ dotenv.config({ path: path.join(process.cwd(), "..", ".env") });
 const CONFIG = {
   computeUnitLimit: 200_000,
   computeUnitPrice: 1_000_000n as MicroLamports,
+  // Must use an RPC provider that supports ZK compression, such as Helius or Triton
   solanaRpcUrl: "http://127.0.0.1:8899",
   solanaWsUrl: "ws://127.0.0.1:8900",
   koraRpcUrl: "http://localhost:8080/",
+  lightTokenTransferAmount: 1_000_000, // 1 token (6 decimals)
 };
+
+/** Convert a web3.js v1 TransactionInstruction to a @solana/kit Instruction. */
+function toKitInstruction(ix: TransactionInstruction): Instruction {
+  return {
+    programAddress: address(ix.programId.toBase58()),
+    accounts: ix.keys.map((k) => ({
+      address: address(k.pubkey.toBase58()),
+      role: k.isWritable
+        ? k.isSigner ? AccountRole.WRITABLE_SIGNER : AccountRole.WRITABLE
+        : k.isSigner ? AccountRole.READONLY_SIGNER : AccountRole.READONLY,
+    })),
+    data: new Uint8Array(ix.data),
+  };
+}
 
 async function getEnvKeyPair(envKey: string) {
   if (!process.env[envKey]) {
@@ -86,7 +106,8 @@ async function setupKeys(client: KoraClient) {
 async function createInstructions(
   client: KoraClient,
   testSenderKeypair: KeyPairSigner,
-  destinationKeypair: KeyPairSigner
+  destinationKeypair: KeyPairSigner,
+  signer_address: string
 ) {
   console.log("\n[3/6] Creating demonstration instructions");
 
@@ -113,6 +134,22 @@ async function createInstructions(
   });
   console.log("  ✓ SOL transfer instruction created");
 
+  // Create Light Token transfer
+  const lightRpc = createRpc(CONFIG.solanaRpcUrl);
+  const koraFeePayer = new PublicKey(signer_address);
+  const lightMint = new PublicKey(paymentToken);
+
+  const lightIxBatches = await createTransferInterfaceInstructions(
+    lightRpc,
+    koraFeePayer,
+    lightMint,
+    CONFIG.lightTokenTransferAmount,
+    new PublicKey(testSenderKeypair.address),
+    new PublicKey(destinationKeypair.address),
+  );
+  const lightInstructions = lightIxBatches[0].map(toKitInstruction);
+  console.log("  ✓ Light Token transfer instruction created");
+
   // Add memo instruction
   const memoInstruction = getAddMemoInstruction({
     memo: "Hello, Kora!",
@@ -122,6 +159,7 @@ async function createInstructions(
   const instructions = [
     ...transferTokens.instructions,
     ...transferSol.instructions,
+    ...lightInstructions,
     memoInstruction,
   ];
 
@@ -264,7 +302,7 @@ async function submitTransaction(
 
 async function main() {
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("KORA GASLESS TRANSACTION DEMO");
+  console.log("KORA GASLESS TRANSACTION DEMO (with Light Token)");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
   try {
@@ -275,11 +313,12 @@ async function main() {
     const { testSenderKeypair, destinationKeypair, signer_address } =
       await setupKeys(client);
 
-    // Step 3: Create demo instructions
+    // Step 3: Create demo instructions (SPL + Light Token + memo)
     const { instructions, paymentToken } = await createInstructions(
       client,
       testSenderKeypair,
-      destinationKeypair
+      destinationKeypair,
+      signer_address
     );
 
     // Step 4: Get payment instruction from Kora

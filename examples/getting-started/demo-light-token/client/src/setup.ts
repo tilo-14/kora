@@ -53,6 +53,16 @@ import {
     MAX_COMPUTE_UNIT_LIMIT,
     estimateComputeUnitLimitFactory
 } from "@solana-program/compute-budget";
+import {
+    Keypair as Web3Keypair,
+    PublicKey,
+    Transaction,
+    sendAndConfirmTransaction,
+} from "@solana/web3.js";
+import { createRpc } from "@lightprotocol/stateless.js";
+import { LightTokenProgram, createAtaInterface, getAssociatedTokenAddressInterface } from "@lightprotocol/compressed-token";
+import { wrap } from "@lightprotocol/compressed-token/unified";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { appendFile } from 'fs/promises';
 import path from "path";
 import dotenv from "dotenv";
@@ -234,7 +244,7 @@ async function initializeToken({
         // Initialize the Mint
         getInitializeMintInstruction({
             mint: mint.address,
-            decimals: DECIMALS,
+            decimals,
             mintAuthority: mintAuthority.address
         }),
         // Create Associated Token Account
@@ -276,6 +286,12 @@ async function getOrCreateEnvKeyPair(envKey: string) {
         return await createKeyPairSignerFromB58Secret(process.env[envKey]);
     }
     return await addKeypairToEnvFile(envKey);
+}
+
+/** Convert a kit KeyPairSigner env var to a web3.js v1 Keypair. */
+function getWeb3Keypair(envKey: string): Web3Keypair {
+    const base58Encoder = getBase58Encoder();
+    return Web3Keypair.fromSecretKey(new Uint8Array(base58Encoder.encode(process.env[envKey]!)));
 }
 
 async function main() {
@@ -320,5 +336,45 @@ async function main() {
         decimals: DECIMALS,
         otherAtaWallets: [TEST_SENDER_KEYPAIR, KORA_PRIVATE_KEY, DESTINATION_KEYPAIR],
     })
+
+    // 5 - Register SPL mint with Light Token Program and wrap tokens
+    // Must use an RPC provider that supports ZK compression, such as Helius or Triton
+    const lightRpc = createRpc(httpEndpoint);
+    const web3Payer = getWeb3Keypair('KORA_PRIVATE_KEY');
+    const web3Sender = getWeb3Keypair('TEST_SENDER_KEYPAIR');
+    const mintPubkey = new PublicKey(USDC_LOCAL_KEY.address);
+
+    // Register existing SPL mint with Light Token Program (one-time)
+    const registerIx = await LightTokenProgram.createSplInterface({
+        feePayer: web3Payer.publicKey,
+        mint: mintPubkey,
+        tokenProgramId: TOKEN_PROGRAM_ID,
+    });
+    const registerTx = new Transaction().add(registerIx);
+    await sendAndConfirmTransaction(lightRpc, registerTx, [web3Payer]);
+    console.log('  ✓ SPL mint registered with Light Token Program');
+
+    // Create Light Token ATA for sender and wrap SPL tokens
+    await createAtaInterface(lightRpc, web3Payer, mintPubkey, web3Sender.publicKey);
+    const senderLightAta = getAssociatedTokenAddressInterface(mintPubkey, web3Sender.publicKey);
+
+    const { findAssociatedTokenPda: findSplAta } = await import("@solana-program/token");
+    const [senderSplAta] = await findSplAta({
+        mint: USDC_LOCAL_KEY.address,
+        owner: TEST_SENDER_KEYPAIR.address,
+        tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    });
+
+    const wrapAmount = BigInt((DROP_AMOUNT / 2) * 10 ** DECIMALS);
+    await wrap(
+        lightRpc,
+        web3Payer,
+        new PublicKey(senderSplAta),
+        senderLightAta,
+        web3Sender,
+        mintPubkey,
+        wrapAmount,
+    );
+    console.log(`  ✓ Wrapped ${DROP_AMOUNT / 2} tokens into Light Token`);
 }
 main().catch(e => console.error('Error:', e));
