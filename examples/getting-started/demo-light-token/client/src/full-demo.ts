@@ -21,14 +21,14 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   MicroLamports,
   appendTransactionMessageInstructions,
-  AccountRole,
 } from "@solana/kit";
 import { getAddMemoInstruction } from "@solana-program/memo";
 import { createRecentSignatureConfirmationPromiseFactory } from "@solana/transaction-confirmation";
 import { updateOrAppendSetComputeUnitLimitInstruction, updateOrAppendSetComputeUnitPriceInstruction } from "@solana-program/compute-budget";
-import { PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { createRpc } from "@lightprotocol/stateless.js";
-import { createTransferInterfaceInstructions } from "@lightprotocol/compressed-token/unified";
+import { createTransferInstructions } from "@lightprotocol/token-interface";
+import { toKitInstructions } from "@lightprotocol/token-interface/kit";
 import dotenv from "dotenv";
 import path from "path";
 
@@ -43,20 +43,6 @@ const CONFIG = {
   koraRpcUrl: "http://localhost:8080/",
   lightTokenTransferAmount: 1_000_000, // 1 token (6 decimals)
 };
-
-/** Convert a web3.js v1 TransactionInstruction to a @solana/kit Instruction. */
-function toKitInstruction(ix: TransactionInstruction): Instruction {
-  return {
-    programAddress: address(ix.programId.toBase58()),
-    accounts: ix.keys.map((k) => ({
-      address: address(k.pubkey.toBase58()),
-      role: k.isWritable
-        ? k.isSigner ? AccountRole.WRITABLE_SIGNER : AccountRole.WRITABLE
-        : k.isSigner ? AccountRole.READONLY_SIGNER : AccountRole.READONLY,
-    })),
-    data: new Uint8Array(ix.data),
-  };
-}
 
 async function getEnvKeyPair(envKey: string) {
   if (!process.env[envKey]) {
@@ -139,15 +125,16 @@ async function createInstructions(
   const koraFeePayer = new PublicKey(signer_address);
   const lightMint = new PublicKey(paymentToken);
 
-  const lightIxBatches = await createTransferInterfaceInstructions(
-    lightRpc,
-    koraFeePayer,
-    lightMint,
-    CONFIG.lightTokenTransferAmount,
-    new PublicKey(testSenderKeypair.address),
-    new PublicKey(destinationKeypair.address),
-  );
-  const lightInstructions = lightIxBatches[0].map(toKitInstruction);
+  const lightIxs = await createTransferInstructions({
+    rpc: lightRpc,
+    payer: koraFeePayer,
+    mint: lightMint,
+    amount: BigInt(CONFIG.lightTokenTransferAmount),
+    sourceOwner: new PublicKey(testSenderKeypair.address),
+    authority: new PublicKey(testSenderKeypair.address),
+    recipient: new PublicKey(destinationKeypair.address),
+  });
+  const lightInstructions = toKitInstructions(lightIxs);
   console.log("  ✓ Light Token transfer instruction created");
 
   // Add memo instruction

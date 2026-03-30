@@ -25,7 +25,7 @@
     "@solana/assertions": "^6.0.0",
     "@solana/kit": "^6.0.0",
     "@solana/transaction-confirmation": "^6.0.0",
-    "@lightprotocol/compressed-token": "^0.23.0",
+    "@lightprotocol/token-interface": "^0.23.0",
     "@lightprotocol/stateless.js": "^0.23.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.0",

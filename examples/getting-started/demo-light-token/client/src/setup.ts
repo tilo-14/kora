@@ -56,12 +56,15 @@ import {
 import {
     Keypair as Web3Keypair,
     PublicKey,
-    Transaction,
-    sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import { createRpc } from "@lightprotocol/stateless.js";
-import { LightTokenProgram, createAtaInterface, getAssociatedTokenAddressInterface } from "@lightprotocol/compressed-token";
-import { wrap } from "@lightprotocol/compressed-token/unified";
+import { createRpc, buildAndSignTx, sendAndConfirmTx } from "@lightprotocol/stateless.js";
+import {
+    createSplInterfaceInstruction,
+    createAtaInstructions,
+    getAtaAddress,
+    createWrapInstruction,
+    getSplInterfaces,
+} from "@lightprotocol/token-interface";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { appendFile } from 'fs/promises';
 import path from "path";
@@ -345,19 +348,30 @@ async function main() {
     const mintPubkey = new PublicKey(USDC_LOCAL_KEY.address);
 
     // Register existing SPL mint with Light Token Program (one-time)
-    const registerIx = await LightTokenProgram.createSplInterface({
+    const registerIx = createSplInterfaceInstruction({
         feePayer: web3Payer.publicKey,
         mint: mintPubkey,
+        index: 0,
         tokenProgramId: TOKEN_PROGRAM_ID,
     });
-    const registerTx = new Transaction().add(registerIx);
-    await sendAndConfirmTransaction(lightRpc, registerTx, [web3Payer]);
+    const { blockhash: regBlockhash } = await lightRpc.getLatestBlockhash();
+    const registerTx = buildAndSignTx([registerIx], web3Payer, regBlockhash);
+    await sendAndConfirmTx(lightRpc, registerTx);
     console.log('  ✓ SPL mint registered with Light Token Program');
 
-    // Create Light Token ATA for sender and wrap SPL tokens
-    await createAtaInterface(lightRpc, web3Payer, mintPubkey, web3Sender.publicKey);
-    const senderLightAta = getAssociatedTokenAddressInterface(mintPubkey, web3Sender.publicKey);
+    // Create Light Token ATA for sender
+    const ataIxs = await createAtaInstructions({
+        owner: web3Sender.publicKey,
+        mint: mintPubkey,
+        payer: web3Payer.publicKey,
+    });
+    const senderLightAta = getAtaAddress({ owner: web3Sender.publicKey, mint: mintPubkey });
+    const { blockhash: ataBlockhash } = await lightRpc.getLatestBlockhash();
+    const ataTx = buildAndSignTx(ataIxs, web3Payer, ataBlockhash);
+    await sendAndConfirmTx(lightRpc, ataTx);
+    console.log('  ✓ Light Token ATA created for sender');
 
+    // Wrap SPL tokens into Light Token
     const { findAssociatedTokenPda: findSplAta } = await import("@solana-program/token");
     const [senderSplAta] = await findSplAta({
         mint: USDC_LOCAL_KEY.address,
@@ -365,16 +379,24 @@ async function main() {
         tokenProgram: TOKEN_PROGRAM_ADDRESS,
     });
 
+    const splInterfaces = await getSplInterfaces(lightRpc, mintPubkey);
+    const activeInterface = splInterfaces.find(i => i.isInitialized);
+    if (!activeInterface) throw new Error("No initialized SPL interface found");
+
     const wrapAmount = BigInt((DROP_AMOUNT / 2) * 10 ** DECIMALS);
-    await wrap(
-        lightRpc,
-        web3Payer,
-        new PublicKey(senderSplAta),
-        senderLightAta,
-        web3Sender,
-        mintPubkey,
-        wrapAmount,
-    );
+    const wrapIx = createWrapInstruction({
+        source: new PublicKey(senderSplAta),
+        destination: senderLightAta,
+        owner: web3Sender.publicKey,
+        mint: mintPubkey,
+        amount: wrapAmount,
+        splInterface: activeInterface,
+        decimals: DECIMALS,
+        payer: web3Payer.publicKey,
+    });
+    const { blockhash: wrapBlockhash } = await lightRpc.getLatestBlockhash();
+    const wrapTx = buildAndSignTx([wrapIx], web3Payer, wrapBlockhash, [web3Sender]);
+    await sendAndConfirmTx(lightRpc, wrapTx);
     console.log(`  ✓ Wrapped ${DROP_AMOUNT / 2} tokens into Light Token`);
 }
 main().catch(e => console.error('Error:', e));
